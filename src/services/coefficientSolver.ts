@@ -386,7 +386,9 @@ export async function solveCoefficientsAsync(
   };
   let bestRates = { week1: 0, week2: 0, fullCollection: 0 };
 
-  for (let iter = 0; iter < maxIterations; iter++) {
+  // 测试：第一轮模拟后，如果第二周>20%，强制降低系数，否则保持
+  // 跳过复杂的调整算法
+  for (let iter = 0; iter < 3; iter++) {
     const result = await monteCarloSimulateAsync(
       setup,
       { week1: week1Coeffs, week2: week2Coeffs },
