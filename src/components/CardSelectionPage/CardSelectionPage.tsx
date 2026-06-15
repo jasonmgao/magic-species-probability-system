@@ -1,17 +1,19 @@
 /**
- * 卡面选择页 - 主页面
+ * 卡面选择页 - 主页面（修正版）
+ *
+ * 正确理解：
+ * 1. 集齐率 = 14天内10张卡每张都≥1张的概率（全收集）
+ * 2. 中奖率：
+ *    - 第一套中奖率 = 7天内获得 A×2 + B×1 的概率（目标控制在4%以内）
+ *    - 第二套中奖率 = 14天内获得 C×2 + D×1 的概率（目标控制在4%以内）
  */
 
-import { useState, useCallback, useEffect } from 'react';
-import { Layout, Row, Col, Card as AntCard, Button, Space, Tabs, Typography, message } from 'antd';
-import { CalculatorOutlined, SettingOutlined } from '@ant-design/icons';
-import type { CardCombination, Rarity, SlotPosition, SimulationResult } from '@/types';
-import { BASE_CARDS, RARITY_CONFIG } from '@/constants';
-import { CardPoolSelector } from './CardPoolSelector';
-import { CardSlotManager } from './CardSlotManager';
-import { ProbabilityCalculator } from './ProbabilityCalculator';
-import { RecommendationPanel } from './RecommendationPanel';
-import { ProbabilityChart } from './ProbabilityChart';
+import { useState, useCallback } from 'react';
+import { Layout, Row, Col, Card as AntCard, Button, Space, Typography, message, Progress, Statistic, Tag, Alert } from 'antd';
+import { CalculatorOutlined, SettingOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
+import type { CardRarityConfig, Rarity } from '@/types';
+import { RARITY_CONFIG } from '@/constants';
+import { runSimulationInChunks, type CardSetup, type SimulationResult } from '@/services/simulationEngine';
 
 const { Content } = Layout;
 const { Title, Text } = Typography;
@@ -20,204 +22,274 @@ interface CardSelectionPageProps {
   onNavigateToConfig?: () => void;
 }
 
+// 4张组合卡的配置
+const COMBO_CARDS = ['A', 'B', 'C', 'D'] as const;
+
 export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps) {
-  // 当前卡组配置
-  const [combination, setCombination] = useState<CardCombination | null>(null);
+  // 4张卡的稀有度配置
+  const [cardSetup, setCardSetup] = useState<CardSetup>({
+    A: { id: 'A', rarity: 'COMMON' },
+    B: { id: 'B', rarity: 'RARE' },
+    C: { id: 'C', rarity: 'COMMON' },
+    D: { id: 'D', rarity: 'RARE' },
+  });
 
-  // 模拟结果
-  const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(null);
+  // 降权系数
+  const [coeffA, setCoeffA] = useState<number>(0.02);
+  const [coeffC, setCoeffC] = useState<number>(0.008);
 
-  // 初始化默认配置
-  useEffect(() => {
-    if (!combination) {
-      // 创建默认配置：A=神奇, B=稀有, C=稀有, D=稀有
-      setCombination({
-        week1: {
-          A: { id: 'A', rarity: 'MAGIC' },
-          a: { id: 'A', rarity: 'MAGIC' },
-          B: { id: 'B', rarity: 'RARE' },
-        },
-        week2: {
-          C: { id: 'C', rarity: 'RARE' },
-          c: { id: 'C', rarity: 'RARE' },
-          D: { id: 'D', rarity: 'RARE' },
-        },
-      });
+  // 模拟状态
+  const [isCalculating, setIsCalculating] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [result, setResult] = useState<SimulationResult | null>(null);
+
+  // 更新卡片稀有度
+  const updateCardRarity = useCallback((cardId: keyof CardSetup, rarity: Rarity) => {
+    setCardSetup(prev => ({
+      ...prev,
+      [cardId]: { ...prev[cardId], rarity },
+    }));
+  }, []);
+
+  // 运行模拟
+  const runSimulation = useCallback(async () => {
+    setIsCalculating(true);
+    setProgress(0);
+
+    try {
+      const simulationResult = await runSimulationInChunks(
+        cardSetup,
+        { A: coeffA, C: coeffC },
+        100000,
+        (p) => setProgress(p)
+      );
+
+      setResult(simulationResult);
+    } catch (error) {
+      console.error('Simulation error:', error);
+      message.error('模拟运行失败');
+    } finally {
+      setIsCalculating(false);
     }
-  }, [combination]);
+  }, [cardSetup, coeffA, coeffC]);
 
-  // 获取已选中的卡片ID列表
-  const selectedCardIds = useCallback(() => {
-    if (!combination) return [];
-    const ids: string[] = [];
-    ids.push(combination.week1.A.id);
-    ids.push(combination.week1.a.id);
-    ids.push(combination.week1.B.id);
-    ids.push(combination.week2.C.id);
-    ids.push(combination.week2.c.id);
-    ids.push(combination.week2.D.id);
-    return ids;
-  }, [combination])();
-
-  // 处理从卡池选择卡片
-  const handleSelectCard = useCallback((cardId: string) => {
-    setCombination(prev => {
-      if (!prev) {
-        // 创建新的组合
-        const card = BASE_CARDS.find(c => c.id === cardId)!;
-        return {
-          week1: {
-            A: { id: cardId, rarity: card.rarity },
-            a: { id: cardId, rarity: card.rarity },
-            B: { id: '', rarity: 'COMMON' },
-          },
-          week2: {
-            C: { id: '', rarity: 'COMMON' },
-            c: { id: '', rarity: 'COMMON' },
-            D: { id: '', rarity: 'COMMON' },
-          },
-        };
-      }
-
-      // 找到第一个空的卡槽填入
-      const card = BASE_CARDS.find(c => c.id === cardId)!;
-
-      if (!prev.week1.A.id) {
-        return { ...prev, week1: { ...prev.week1, A: { id: cardId, rarity: card.rarity } } };
-      }
-      if (!prev.week1.a.id) {
-        return { ...prev, week1: { ...prev.week1, a: { id: cardId, rarity: card.rarity } } };
-      }
-      if (!prev.week1.B.id) {
-        return { ...prev, week1: { ...prev.week1, B: { id: cardId, rarity: card.rarity } } };
-      }
-      if (!prev.week2.C.id) {
-        return { ...prev, week2: { ...prev.week2, C: { id: cardId, rarity: card.rarity } } };
-      }
-      if (!prev.week2.c.id) {
-        return { ...prev, week2: { ...prev.week2, c: { id: cardId, rarity: card.rarity } } };
-      }
-      if (!prev.week2.D.id) {
-        return { ...prev, week2: { ...prev.week2, D: { id: cardId, rarity: card.rarity } } };
-      }
-
-      message.warning('所有卡槽已填满，请先移除不需要的卡片');
-      return prev;
-    });
-  }, []);
-
-  // 处理卡槽点击
-  const handleSlotClick = useCallback((position: SlotPosition) => {
-    // 点击空卡槽时，可以打开选择器
-    message.info('请从左侧卡池选择卡片');
-  }, []);
-
-  // 处理移除卡槽卡片
-  const handleSlotRemove = useCallback((position: SlotPosition) => {
-    setCombination(prev => {
-      if (!prev) return prev;
-      const emptyConfig = { id: '', rarity: 'COMMON' as Rarity };
-
-      switch (position) {
-        case 'A':
-          return { ...prev, week1: { ...prev.week1, A: emptyConfig } };
-        case 'a':
-          return { ...prev, week1: { ...prev.week1, a: emptyConfig } };
-        case 'B':
-          return { ...prev, week1: { ...prev.week1, B: emptyConfig } };
-        case 'C':
-          return { ...prev, week2: { ...prev.week2, C: emptyConfig } };
-        case 'c':
-          return { ...prev, week2: { ...prev.week2, c: emptyConfig } };
-        case 'D':
-          return { ...prev, week2: { ...prev.week2, D: emptyConfig } };
-        default:
-          return prev;
-      }
-    });
-  }, []);
-
-  // 处理改变卡槽卡片稀有度
-  const handleSlotChangeRarity = useCallback((position: SlotPosition, rarity: Rarity) => {
-    setCombination(prev => {
-      if (!prev) return prev;
-
-      const updateConfig = (oldConfig: { id: string; rarity: Rarity }) => ({
-        ...oldConfig,
-        rarity,
-      });
-
-      switch (position) {
-        case 'A':
-          return { ...prev, week1: { ...prev.week1, A: updateConfig(prev.week1.A) } };
-        case 'a':
-          return { ...prev, week1: { ...prev.week1, a: updateConfig(prev.week1.a) } };
-        case 'B':
-          return { ...prev, week1: { ...prev.week1, B: updateConfig(prev.week1.B) } };
-        case 'C':
-          return { ...prev, week2: { ...prev.week2, C: updateConfig(prev.week2.C) } };
-        case 'c':
-          return { ...prev, week2: { ...prev.week2, c: updateConfig(prev.week2.c) } };
-        case 'D':
-          return { ...prev, week2: { ...prev.week2, D: updateConfig(prev.week2.D) } };
-        default:
-          return prev;
-      }
-    });
-  }, []);
-
-  // 模拟完成回调
-  const handleSimulationComplete = useCallback((result: SimulationResult) => {
-    setSimulationResult(result);
-  }, []);
+  // 判断费率是否在目标范围内
+  const isWeek1Good = result && result.week1SetRate <= 4.0;
+  const isWeek2Good = result && result.week2SetRate <= 4.0;
 
   return (
-    <div style={{ padding: '24px', maxWidth: 1400, margin: '0 auto' }}>
+    <div style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
       <div style={{ marginBottom: 24 }}>
-        <Title level={2}>🎴 卡面选择页</Title>
+        <Title level={2}>🎴 神奇物种概率测算系统</Title>
         <Text type="secondary">
-          选择 2 周的幸运卡组（6 个卡槽），系统将自动计算集齐率并给出推荐建议
+          评估卡组配置：计算10张全收集概率 + 两套组合中奖率（目标控制在4%以内）
         </Text>
       </div>
 
       <Row gutter={[24, 24]}>
-        {/* 左侧：卡池选择 */}
-        <Col xs={24} lg={10}>
-          <CardPoolSelector
-            selectedCardIds={selectedCardIds}
-            onSelectCard={handleSelectCard}
-            onSelectRarity={() => {}}
-          />
+        {/* 左侧：卡片配置 */}
+        <Col xs={24} lg={12}>
+          <AntCard title="组合卡配置（A/B/C/D）" bordered={false}>
+            <Space direction="vertical" style={{ width: '100%' }} size="large">
+              {COMBO_CARDS.map(cardId => {
+                const config = cardSetup[cardId];
+                const isTargetCard = cardId === 'A' || cardId === 'C';
+
+                return (
+                  <div key={cardId} style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                    <div
+                      style={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: '50%',
+                        backgroundColor: RARITY_CONFIG[config.rarity].color,
+                        color: '#fff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 20,
+                        fontWeight: 'bold',
+                      }}
+                    >
+                      {cardId}
+                    </div>
+
+                    <div style={{ flex: 1 }}>
+                      <Text strong>{cardId} 卡配置</Text>
+                      <br />
+                      <Text type="secondary">
+                        {cardId === 'A' && '需要2张（第2张降权）'}
+                        {cardId === 'B' && '需要1张'}
+                        {cardId === 'C' && '需要2张（第2张降权）'}
+                        {cardId === 'D' && '需要1张'}
+                      </Text>
+                    </div>
+
+                    <Space>
+                      {(['MAGIC', 'RARE', 'COMMON'] as Rarity[]).map(rarity => (
+                        <Button
+                          key={rarity}
+                          type={config.rarity === rarity ? 'primary' : 'default'}
+                          size="small"
+                          style={{
+                            backgroundColor: config.rarity === rarity ? RARITY_CONFIG[rarity].color : undefined,
+                          }}
+                          onClick={() => updateCardRarity(cardId, rarity)}
+                        >
+                          {RARITY_CONFIG[rarity].label}
+                        </Button>
+                      ))}
+                    </Space>
+                  </div>
+                );
+              })}
+            </Space>
+          </AntCard>
+
+          {/* 降权系数配置 */}
+          <AntCard title="降权系数配置" style={{ marginTop: 16 }} bordered={false}>
+            <Row gutter={16}>
+              <Col span={12}>
+                <div>
+                  <Text strong>A卡第2张系数</Text>
+                  <br />
+                  <Text type="secondary">第一套7天窗口，系数较高</Text>
+                  <div style={{ marginTop: 8 }}>
+                    <input
+                      type="range"
+                      min={0}
+                      max={0.1}
+                      step={0.001}
+                      value={coeffA}
+                      onChange={(e) => setCoeffA(parseFloat(e.target.value))}
+                      style={{ width: '100%' }}
+                    />
+                    <div style={{ textAlign: 'center', marginTop: 4 }}>
+                      <Tag color="blue">{(coeffA * 100).toFixed(1)}%</Tag>
+                    </div>
+                  </div>
+                </div>
+              </Col>
+              <Col span={12}>
+                <div>
+                  <Text strong>C卡第2张系数</Text>
+                  <br />
+                  <Text type="secondary">第二套14天窗口，系数较低</Text>
+                  <div style={{ marginTop: 8 }}>
+                    <input
+                      type="range"
+                      min={0}
+                      max={0.05}
+                      step={0.0001}
+                      value={coeffC}
+                      onChange={(e) => setCoeffC(parseFloat(e.target.value))}
+                      style={{ width: '100%' }}
+                    />
+                    <div style={{ textAlign: 'center', marginTop: 4 }}>
+                      <Tag color="purple">{(coeffC * 100).toFixed(2)}%</Tag>
+                    </div>
+                  </div>
+                </div>
+              </Col>
+            </Row>
+          </AntCard>
         </Col>
 
-        {/* 中间：卡槽管理 */}
-        <Col xs={24} lg={14}>
-          <CardSlotManager
-            combination={combination}
-            onSlotClick={handleSlotClick}
-            onSlotRemove={handleSlotRemove}
-            onSlotChangeRarity={handleSlotChangeRarity}
-          />
-        </Col>
-      </Row>
+        {/* 右侧：模拟结果 */}
+        <Col xs={24} lg={12}>
+          <AntCard title="概率测算" bordered={false}>
+            <Space direction="vertical" style={{ width: '100%' }} size="large">
+              <Button
+                type="primary"
+                size="large"
+                icon={<CalculatorOutlined />}
+                onClick={runSimulation}
+                disabled={isCalculating}
+                block
+              >
+                {isCalculating ? '计算中...' : '开始测算（10万次模拟）'}
+              </Button>
 
-      <Row gutter={[24, 24]} style={{ marginTop: 24 }}>
-        {/* 概率测算 */}
-        <Col xs={24} lg={8}>
-          <ProbabilityCalculator
-            combination={combination}
-            onSimulationComplete={handleSimulationComplete}
-          />
-        </Col>
+              {isCalculating && (
+                <div>
+                  <Progress percent={Math.round(progress * 100)} status="active" />
+                  <Text type="secondary">正在运行蒙特卡洛模拟...</Text>
+                </div>
+              )}
 
-        {/* 推荐建议 */}
-        <Col xs={24} lg={8}>
-          <RecommendationPanel result={simulationResult} />
-        </Col>
+              {result && !isCalculating && (
+                <div>
+                  <Alert
+                    message="测算完成"
+                    description={
+                      <div>
+                        <p><strong>集齐率（10张全收集）：</strong>{result.fullCollectionRate.toFixed(2)}%</p>
+                        <p>第一套中奖率（7天AaB）：{result.week1SetRate.toFixed(3)}% {isWeek1Good ? '✅ 符合目标' : '❌ 超出目标'}</p>
+                        <p>第二套中奖率（14天CcD）：{result.week2SetRate.toFixed(3)}% {isWeek2Good ? '✅ 符合目标' : '❌ 超出目标'}</p>
+                      </div>
+                    }
+                    type={isWeek1Good && isWeek2Good ? 'success' : 'warning'}
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                  />
 
-        {/* 可视化 */}
-        <Col xs={24} lg={8}>
-          <ProbabilityChart result={simulationResult} />
+                  {/* 集齐率 */}
+                  <AntCard size="small" style={{ marginBottom: 16, backgroundColor: '#f6ffed', borderColor: '#b7eb8f' }}>
+                    <Statistic
+                      title="集齐率（10张全收集 ≥1张）"
+                      value={result.fullCollectionRate}
+                      precision={2}
+                      suffix="%"
+                      valueStyle={{ color: result.fullCollectionRate > 50 ? '#52c41a' : '#faad14' }}
+                    />
+                    <Text type="secondary">14天内所有卡片都获得至少1张的概率</Text>
+                  </AntCard>
+
+                  {/* 第一套中奖率 */}
+                  <AntCard size="small" style={{ marginBottom: 16, borderColor: isWeek1Good ? '#b7eb8f' : '#ffbb96' }}>
+                    <Statistic
+                      title="第一套中奖率（7天内 A×2 + B×1）"
+                      value={result.week1SetRate}
+                      precision={3}
+                      suffix="%"
+                      valueStyle={{ color: isWeek1Good ? '#52c41a' : '#f5222d' }}
+                    />
+                    <Space>
+                      <Text type="secondary">目标：≤ 4%</Text>
+                      {isWeek1Good ? (
+                        <Tag color="success" icon={<CheckCircleOutlined />}>符合</Tag>
+                      ) : (
+                        <Tag color="error" icon={<CloseCircleOutlined />}>超出</Tag>
+                      )}
+                    </Space>
+                  </AntCard>
+
+                  {/* 第二套中奖率 */}
+                  <AntCard size="small" style={{ borderColor: isWeek2Good ? '#b7eb8f' : '#ffbb96' }}>
+                    <Statistic
+                      title="第二套中奖率（14天内 C×2 + D×1）"
+                      value={result.week2SetRate}
+                      precision={3}
+                      suffix="%"
+                      valueStyle={{ color: isWeek2Good ? '#52c41a' : '#f5222d' }}
+                    />
+                    <Space>
+                      <Text type="secondary">目标：≤ 4%</Text>
+                      {isWeek2Good ? (
+                        <Tag color="success" icon={<CheckCircleOutlined />}>符合</Tag>
+                      ) : (
+                        <Tag color="error" icon={<CloseCircleOutlined />}>超出</Tag>
+                      )}
+                    </Space>
+                  </AntCard>
+
+                  <Text type="secondary" style={{ display: 'block', marginTop: 16 }}>
+                    平均获得不同卡片数：{result.avgUniqueCards.toFixed(2)} 张
+                  </Text>
+                </div>
+              )}
+            </Space>
+          </AntCard>
         </Col>
       </Row>
 

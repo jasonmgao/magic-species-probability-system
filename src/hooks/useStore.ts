@@ -1,85 +1,40 @@
 /**
- * Zustand 全局状态管理
+ * Zustand 全局状态管理（简化版）
  */
 
 import { create } from 'zustand';
-import { devtools, persist } from 'zustand/middleware';
-import type { AppState, CardCombination, ProbabilityCase, ProbabilityCalculationResult, SimulationResult } from '@/types';
-import {
-  DEFAULT_BASE_PROB_TABLE,
-  DEFAULT_COEFFICIENT_TABLE,
-  createDefaultCase,
-} from '@/constants';
+import type { CoefficientConfig } from '@/types';
 
-export const useStore = create<AppState>()(
-  devtools(
-    persist(
-      (set) => ({
-        // ===== 卡面选择页状态 =====
-        selectedCombination: null,
-        simulationResult: null,
-        isSimulating: false,
-        simulationProgress: 0,
+export interface AppState {
+  // 降权系数配置
+  coefficientConfig: CoefficientConfig;
 
-        // ===== 概率配置页状态 =====
-        baseProbTable: { ...DEFAULT_BASE_PROB_TABLE },
-        coefficientTable: JSON.parse(JSON.stringify(DEFAULT_COEFFICIENT_TABLE)),
-        currentCase: createDefaultCase(),
-        calculationResult: null,
+  // Actions
+  setCoefficientA: (value: number) => void;
+  setCoefficientC: (value: number) => void;
+  resetCoefficients: () => void;
+}
 
-        // ===== Actions =====
-        setSelectedCombination: (combination: CardCombination) =>
-          set({ selectedCombination: combination }),
+const DEFAULT_COEFFICIENT: CoefficientConfig = {
+  A: 0.02,
+  C: 0.008,
+};
 
-        setSimulationResult: (result: SimulationResult) =>
-          set({ simulationResult: result }),
+export const useStore = create<AppState>()((set) => ({
+  coefficientConfig: { ...DEFAULT_COEFFICIENT },
 
-        setIsSimulating: (isSimulating: boolean) =>
-          set({ isSimulating }),
+  setCoefficientA: (value: number) =>
+    set((state) => ({
+      coefficientConfig: { ...state.coefficientConfig, A: value },
+    })),
 
-        setSimulationProgress: (progress: number) =>
-          set({ simulationProgress: progress }),
+  setCoefficientC: (value: number) =>
+    set((state) => ({
+      coefficientConfig: { ...state.coefficientConfig, C: value },
+    })),
 
-        updateBaseProb: (cardId: string, prob: number) =>
-          set((state) => ({
-            baseProbTable: { ...state.baseProbTable, [cardId]: prob },
-          })),
-
-        updateCoefficient: (cardId: string, holdCount: number, coefficient: number) =>
-          set((state) => {
-            const newTable = JSON.parse(JSON.stringify(state.coefficientTable));
-            if (!newTable[cardId]) {
-              newTable[cardId] = [1.0, 0, 0];
-            }
-            newTable[cardId][holdCount] = coefficient;
-            return { coefficientTable: newTable };
-          }),
-
-        setCurrentCase: (caseData: ProbabilityCase) =>
-          set({ currentCase: caseData }),
-
-        setCalculationResult: (result: ProbabilityCalculationResult) =>
-          set({ calculationResult: result }),
-
-        resetToDefault: () =>
-          set({
-            baseProbTable: { ...DEFAULT_BASE_PROB_TABLE },
-            coefficientTable: JSON.parse(JSON.stringify(DEFAULT_COEFFICIENT_TABLE)),
-            currentCase: createDefaultCase(),
-            selectedCombination: null,
-            simulationResult: null,
-            calculationResult: null,
-            isSimulating: false,
-            simulationProgress: 0,
-          }),
-      }),
-      {
-        name: 'magic-species-probability-storage',
-        partialize: (state) => ({
-          baseProbTable: state.baseProbTable,
-          coefficientTable: state.coefficientTable,
-        }),
-      }
-    )
-  )
-);
+  resetCoefficients: () =>
+    set({
+      coefficientConfig: { ...DEFAULT_COEFFICIENT },
+    }),
+}));
