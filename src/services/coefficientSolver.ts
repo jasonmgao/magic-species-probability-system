@@ -433,16 +433,15 @@ export async function solveCoefficientsAsync(
     w2AdjustAttempts++;
   }
 
-  // ⚠️ 如果 high 还导致 >30%，再降一级
-  if (testHigh.week2Rate > 20) {
-    high = 1e-6;
-    testHigh = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, high), 1500);
-    await new Promise(r => setTimeout(r, 0));
-  }
-  if (testHigh.week2Rate > 10) {
-    high = 1e-7;
-    testHigh = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, high), 1500);
-    await new Promise(r => setTimeout(r, 0));
+  // ⚠️ 如果 high 还导致 >30%，暴力降低high直到<30%
+  if (testHigh.week2Rate > 30) {
+    console.log('[DEBUG] Initial high (1e-5) rate too high:', testHigh.week2Rate, ', lowering...');
+    while (testHigh.week2Rate > 30 && high > 1e-12) {
+      high *= 0.1;
+      testHigh = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, high), 1500);
+      await new Promise(r => setTimeout(r, 0));
+      console.log('[DEBUG] high =', high, 'rate =', testHigh.week2Rate);
+    }
   }
 
   // 二分搜索第二周系数（更多迭代+实时更新进度）
