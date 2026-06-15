@@ -213,11 +213,14 @@ async function monteCarloSimulateAsync(
       }
       if (checkComboComplete(setup.week1, bagWeek1)) week1Success++;
 
-      // Full 2 weeks
+      // Full 2 weeks - 检查第二周的关键修正：
+      // 必须在第7天时不满足第二周，但在第14天满足
+      // 这样才能真正测试第二周的卡组控制是否有效
       const bagFull: Record<string, number> = {};
       const scheduleFull = generateSchedule();
       const w1Lucky = new Set<string>();
       const w2Lucky = new Set<string>();
+      let week2CompleteAtDay7 = false;
 
       for (let day = 1; day <= 14; day++) {
         const dayType = scheduleFull[day - 1];
@@ -227,8 +230,17 @@ async function monteCarloSimulateAsync(
           const card = drawOneCard(bagFull, setup, coefficients, day, dayType, luckyCard);
           bagFull[card] = (bagFull[card] || 0) + 1;
         }
+
+        // 第7天结束时检查第二周是否已经完成（这个阶段不应该完成）
+        if (day === 7) {
+          week2CompleteAtDay7 = checkComboComplete(setup.week2, bagFull);
+        }
       }
-      if (checkComboComplete(setup.week2, bagFull)) week2Success++;
+
+      // 第二周成功：第7天未完成，但第14天完成了
+      if (!week2CompleteAtDay7 && checkComboComplete(setup.week2, bagFull)) {
+        week2Success++;
+      }
       if (checkFullCollection(bagFull)) fullCollection++;
     }
   };
