@@ -1,11 +1,12 @@
 /**
- * 降权系数求解器（优化版）
- * 核心理解：缺几张是针对组合的状态，不是单张卡
+ * 降权系数求解器（完整版）
+ * 包含：1. 降权系数求解  2. 10张卡集齐率计算
  */
 
 import type { CardSetup, Combination, CoefficientResult } from '@/types';
 
 const ALL_CARDS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+const OTHER_CARDS = ['E', 'F', 'G', 'H', 'I', 'J'];
 
 // 卡片类型映射
 function getCardType(card: string): 'common' | 'rare' | 'magic' {
@@ -37,15 +38,23 @@ const SINGLE_PROBS: Record<string, number> = {
   'magic_rare_day': 0.0212,
 };
 
-const COMBO_DIST: Array<[string, string, number]> = [
-  ['common', 'common', 0.22],
-  ['common', 'rare', 0.22],
-  ['common', 'magic', 0.06],
-  ['rare', 'common', 0.22],
-  ['rare', 'rare', 0.13],
-  ['rare', 'magic', 0.04],
+// 组合分布权重
+const COMBO_FULL: Array<[string, string, number]> = [
   ['magic', 'common', 0.06],
   ['magic', 'rare', 0.04],
+  ['common', 'magic', 0.06],
+  ['common', 'rare', 0.22],
+  ['rare', 'magic', 0.04],
+  ['rare', 'common', 0.22],
+  ['common', 'common', 0.22],
+  ['rare', 'rare', 0.13],
+];
+
+const FAST_COMBO: Array<[string, string, number]> = [
+  ['common', 'common', 0.22],
+  ['common', 'rare', 0.22],
+  ['rare', 'common', 0.22],
+  ['rare', 'rare', 0.13],
 ];
 
 function getSingleP(
@@ -69,18 +78,6 @@ function getSingleP(
   return 0.0;
 }
 
-// 简化：每个组合只用1个系数（缺2张时用）
-interface ComboCoefficients {
-  coeff: number;  // 统一系数：缺3=100%, 缺2/1=应用此系数
-}
-
-interface SolverResult {
-  comboCoeffs: Record<string, ComboCoefficients>;
-  combinationRates: Record<string, number>;
-  converged: boolean;
-  error: number;
-}
-
 // 计算组合缺几张
 function calculateMissingCount(combo: Combination, bag: Record<string, number>): number {
   let stillNeeded = 0;
@@ -92,20 +89,32 @@ function calculateMissingCount(combo: Combination, bag: Record<string, number>):
   return stillNeeded;
 }
 
+interface ComboCoefficients {
+  coeff: number;
+}
+
+interface SolverResult {
+  comboCoeffs: Record<string, ComboCoefficients>;
+  combinationRates: Record<string, number>;
+  fullCollectionRate: number;
+  converged: boolean;
+  error: number;
+}
+
 /**
- * 求解降权系数 - 极速版
- * 只搜2个参数，大幅减少计算量
+ * 求解降权系数
  */
 export function solveCoefficients(
   setup: CardSetup,
   targetRate: number = 4.0,
-  trials: number = 200  // 降低试验次数
+  trials: number = 200
 ): SolverResult {
 
   if (setup.combinations.length < 2) {
     return {
       comboCoeffs: {},
       combinationRates: {},
+      fullCollectionRate: 0,
       converged: false,
       error: 999,
     };
@@ -114,7 +123,6 @@ export function solveCoefficients(
   const combo1 = setup.combinations[0];
   const combo2 = setup.combinations[1];
 
-  // 粗搜索：更少参数
   const rangeW1 = [0.01, 0.02, 0.03, 0.05, 0.08, 0.12, 0.20];
   const rangeW2 = [0.005, 0.01, 0.015, 0.02, 0.03, 0.05, 0.08];
 
@@ -122,7 +130,6 @@ export function solveCoefficients(
   let minError = Infinity;
   let bestW1 = 0.03, bestW2 = 0.015;
 
-  // 第一阶段：粗搜索
   for (const coeff1 of rangeW1) {
     for (const coeff2 of rangeW2) {
       const rates = runFastSim(
@@ -147,32 +154,28 @@ export function solveCoefficients(
             [combo1.name]: rates[0],
             [combo2.name]: rates[1],
           },
+          fullCollectionRate: 0,
           converged: error < 0.5,
           error,
         };
       }
     }
+    if (minError < 0.3) break;
   }
 
-  // 第二阶段：细搜索（最佳值附近）
-  const fineW1 = [bestW1 * 0.8, bestW1 * 0.9, bestW1, bestW1 * 1.1, bestW1 * 1.2].filter(x => x <= 0.30);
-  const fineW2 = [bestW2 * 0.8, bestW2 * 0.9, bestW2, bestW2 * 1.1, bestW2 * 1.2].filter(x => x <= 0.15);
+  // 细搜索
+  const fineW1 = [bestW1 * 0.8, bestW1 * 0.9, bestW1, bestW1 * 1.1, bestW1 * 1.2].filter(x => x <= 0.30 && x >= 0.005);
+  const fineW2 = [bestW2 * 0.8, bestW2 * 0.9, bestW2, bestW2 * 1.1, bestW2 * 1.2].filter(x => x <= 0.15 && x >= 0.003);
 
   for (const coeff1 of fineW1) {
     for (const coeff2 of fineW2) {
-      const rates = runFastSim(
-        combo1, combo2,
-        { coeff: coeff1 },
-        { coeff: coeff2 },
-        trials * 2  // 细搜用更多试验
-      );
+      if (rangeW1.includes(coeff1) && rangeW2.includes(coeff2)) continue;
 
+      const rates = runFastSim(combo1, combo2, { coeff: coeff1 }, { coeff: coeff2 }, trials * 2);
       const error = Math.abs(rates[0] - targetRate) + Math.abs(rates[1] - targetRate);
 
       if (error < minError) {
         minError = error;
-        bestW1 = coeff1;
-        bestW2 = coeff2;
         bestResult = {
           comboCoeffs: {
             [combo1.name]: { coeff: coeff1 },
@@ -182,11 +185,27 @@ export function solveCoefficients(
             [combo1.name]: rates[0],
             [combo2.name]: rates[1],
           },
+          fullCollectionRate: 0,
           converged: error < 0.5,
           error,
         };
       }
     }
+  }
+
+  // 计算最终全收集率
+  if (bestResult) {
+    const finalRates = runFastSim(
+      combo1, combo2,
+      bestResult.comboCoeffs[combo1.name],
+      bestResult.comboCoeffs[combo2.name],
+      500
+    );
+    bestResult.fullCollectionRate = calculateFullCollectionRate(
+      combo1, combo2,
+      bestResult.comboCoeffs[combo1.name],
+      bestResult.comboCoeffs[combo2.name]
+    );
   }
 
   return bestResult || {
@@ -195,19 +214,128 @@ export function solveCoefficients(
       [combo2.name]: { coeff: 0.015 },
     },
     combinationRates: {},
+    fullCollectionRate: 0,
     converged: false,
     error: minError,
   };
 }
 
-// 简化的加权模拟：只跑概率最高的4种组合，减少计算量
-const FAST_COMBO_DIST: Array<[string, string, number]> = [
-  ['common', 'common', 0.22],
-  ['common', 'rare', 0.22],
-  ['rare', 'common', 0.22],
-  ['rare', 'rare', 0.13],
-];
+/**
+ * 计算10张卡集齐率（参考用户Python逻辑）
+ */
+function calculateFullCollectionRate(
+  combo1: Combination,
+  combo2: Combination,
+  coeffs1: ComboCoefficients,
+  coeffs2: ComboCoefficients,
+  trials: number = 1000
+): number {
+  const combo1Cards = combo1.requirements.map(r => r.cardId);
+  const combo2Cards = combo2.requirements.map(r => r.cardId);
 
+  // 推断 A,B 类型和 C,D 类型
+  const aType = getCardType(combo1Cards[0]);
+  const cType = getCardType(combo2Cards[0]);
+
+  let successCount = 0;
+
+  for (let t = 0; t < trials; t++) {
+    // 生成日程
+    const week1 = ['common', 'common', 'common', 'common', 'common', 'rare', 'magic'];
+    const week2 = ['common', 'common', 'common', 'common', 'common', 'rare', 'magic'];
+    shuffleArray(week1);
+    shuffleArray(week2);
+    const days = [...week1, ...week2];
+
+    // 10张卡背包
+    const bag: Record<string, number> = {
+      'A': 0, 'B': 0, 'C': 0, 'D': 0,
+      'E': 0, 'F': 0, 'G': 0, 'H': 0, 'I': 0, 'J': 0
+    };
+
+    const luckyA = [0, 0];
+    const luckyC = [0, 0];
+
+    for (let day = 0; day < 14; day++) {
+      const dayType = days[day] as 'common' | 'rare' | 'magic';
+      const week = day < 7 ? 0 : 1;
+
+      const isALucky = (dayType === aType && luckyA[week] === 0);
+      if (isALucky) luckyA[week] = 1;
+      const isCLucky = (dayType === cType && luckyC[week] === 0);
+      if (isCLucky) luckyC[week] = 1;
+
+      const isBLucky = isALucky;
+      const isDLucky = isCLucky;
+
+      // 获取基础概率
+      const p_s: Record<string, number> = {
+        'A': getSingleP(aType, dayType, isALucky),
+        'B': getSingleP(aType, dayType, isBLucky),
+        'C': getSingleP(cType, dayType, isCLucky),
+        'D': getSingleP(cType, dayType, isDLucky),
+        'E': getSingleP(aType, dayType, false),
+        'F': getSingleP(aType, dayType, false),
+        'G': getSingleP(cType, dayType, false),
+        'H': getSingleP(cType, dayType, false),
+        'I': getSingleP(aType, dayType, false),
+        'J': getSingleP(cType, dayType, false),
+      };
+
+      // 应用降权系数（只影响组合卡的多张获取）
+      for (const card of combo1Cards) {
+        if (bag[card] === 1) p_s[card] *= coeffs1.coeff;
+        else if (bag[card] >= 2) p_s[card] = 0;
+      }
+      for (const card of combo2Cards) {
+        if (bag[card] === 1) p_s[card] *= coeffs2.coeff;
+        else if (bag[card] >= 2) p_s[card] = 0;
+      }
+      // 填充卡只许1张
+      for (const card of OTHER_CARDS) {
+        if (bag[card] >= 1) p_s[card] = 0;
+      }
+
+      // 转换为日概率
+      const w: Record<string, number> = {};
+      let wSum = 0;
+      for (const card of ALL_CARDS) {
+        w[card] = singleToDay(p_s[card]);
+        wSum += w[card];
+      }
+
+      // Others权重
+      const wOthers = Math.max(0, 1.0 - wSum);
+
+      // 归一化并轮盘赌
+      const total = wSum + wOthers;
+      const r = Math.random() * total;
+      let cumsum = 0;
+      let obtained = false;
+
+      for (const card of ALL_CARDS) {
+        cumsum += w[card];
+        if (r < cumsum) {
+          bag[card]++;
+          obtained = true;
+          break;
+        }
+      }
+      // 如果没获得卡，就是Others
+    }
+
+    // 检查是否10张全齐
+    if (ALL_CARDS.every(c => bag[c] >= 1)) {
+      successCount++;
+    }
+  }
+
+  return (successCount / trials) * 100;
+}
+
+/**
+ * 快速模拟（只求组合中奖率）
+ */
 function runFastSim(
   combo1: Combination,
   combo2: Combination,
@@ -218,7 +346,7 @@ function runFastSim(
   let w1Sum = 0, w2Sum = 0;
   let totalWeight = 0;
 
-  for (const [aType, cType, weight] of FAST_COMBO_DIST) {
+  for (const [aType, cType, weight] of FAST_COMBO) {
     const [r1, r2] = runSim(combo1, combo2, coeffs1, coeffs2, aType as any, cType as any, trials);
     w1Sum += r1 * weight;
     w2Sum += r2 * weight;
@@ -241,12 +369,10 @@ function runSim(
   trials: number
 ): [number, number] {
   let s1 = 0, s2 = 0;
-
   const combo1Cards = combo1.requirements.map(r => r.cardId);
   const combo2Cards = combo2.requirements.map(r => r.cardId);
 
   for (let t = 0; t < trials; t++) {
-    // 生成日程
     const week1 = ['common', 'common', 'common', 'common', 'common', 'rare', 'magic'];
     const week2 = ['common', 'common', 'common', 'common', 'common', 'rare', 'magic'];
     shuffleArray(week1);
@@ -257,7 +383,6 @@ function runSim(
     const luckyA = [0, 0];
     const luckyC = [0, 0];
 
-    // 第一周（第0-6天）
     for (let day = 0; day < 7; day++) {
       const dayType = days[day] as 'common' | 'rare' | 'magic';
       const week = 0;
@@ -267,15 +392,12 @@ function runSim(
       const isCLucky = (dayType === cType && luckyC[week] === 0);
       if (isCLucky) luckyC[week] = 1;
 
-      // 计算组合缺几张
       const w1Missing = calculateMissingCount(combo1, bag);
       const w2Missing = calculateMissingCount(combo2, bag);
 
-      // 简化系数：缺3张=1.0，缺2/1/0张=用该组合的coeff
       const w1Coeff = w1Missing >= 3 ? 1.0 : coeffs1.coeff;
       const w2Coeff = w2Missing >= 3 ? 1.0 : coeffs2.coeff;
 
-      // 抽卡
       for (const card of combo1Cards) {
         const cardType = getCardType(card);
         let p = getSingleP(cardType, dayType, isALucky);
@@ -294,10 +416,8 @@ function runSim(
       }
     }
 
-    // 第6天检查第一组
     if (calculateMissingCount(combo1, bag) === 0) s1++;
 
-    // 第二周（第7-13天）
     for (let day = 7; day < 14; day++) {
       const dayType = days[day] as 'common' | 'rare' | 'magic';
       const week = 1;
@@ -307,10 +427,8 @@ function runSim(
       const isCLucky = (dayType === cType && luckyC[week] === 0);
       if (isCLucky) luckyC[week] = 1;
 
-      // 第一组已完成，只用很小系数
       const w1Missing = calculateMissingCount(combo1, bag);
       const w1Coeff = w1Missing >= 3 ? 1.0 : (w1Missing > 0 ? coeffs1.coeff : 0.001);
-
       const w2Missing = calculateMissingCount(combo2, bag);
       const w2Coeff = w2Missing >= 3 ? 1.0 : coeffs2.coeff;
 
@@ -332,7 +450,6 @@ function runSim(
       }
     }
 
-    // 第13天检查第二组
     if (calculateMissingCount(combo2, bag) === 0) s2++;
   }
 
@@ -350,37 +467,25 @@ export function generateCoefficientReport(
   setup: CardSetup,
   solverResult: SolverResult
 ): CoefficientResult {
-  const { comboCoeffs, combinationRates } = solverResult;
+  const { comboCoeffs, combinationRates, fullCollectionRate } = solverResult;
 
   const result: CoefficientResult = {
-    byMissingCount: {
-      missing3: {},
-      missing2: {},
-      missing1: {},
-    },
+    byMissingCount: { missing3: {}, missing2: {}, missing1: {} },
     allCoefficients: {},
     combinationRates,
-    fullCollectionRate: 0,
+    fullCollectionRate,
     converged: solverResult.converged,
     error: solverResult.error,
   };
 
-  // 简化显示：每组只显示一个系数
   for (const combo of setup.combinations) {
     const coeff = comboCoeffs[combo.name]?.coeff ?? 0.02;
     const cards = combo.requirements.map(r => r.cardId);
 
-    // 缺3张：100%
     for (const card of cards) {
       result.byMissingCount.missing3[card] = 1.0;
-    }
-    // 缺2/1张：用该组合的系数
-    for (const card of cards) {
       result.byMissingCount.missing2[card] = coeff;
       result.byMissingCount.missing1[card] = coeff;
-    }
-    // 记录系数
-    for (const card of cards) {
       result.allCoefficients[card] = coeff;
     }
   }
