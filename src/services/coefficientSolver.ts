@@ -40,9 +40,10 @@ function initializeCoefficients(
 ): Record<string, CardCoefficients> {
   const result: Record<string, CardCoefficients> = {};
   const coeffCount = totalSlots;
-  // 对于14天窗口，要把中奖率压到4%，系数必须极低
-  // 第二周：3张C在14天内，如果不狠压肯定超标
-  const initialGuess = isWeek2 ? 0.00001 : 0.02;
+  // 对于14天窗口，要把中奖率压到4%
+  // 0.7%说明系数太低了，需要往上调
+  // 尝试一个中间值：0.0005
+  const initialGuess = isWeek2 ? 0.0005 : 0.02;
 
   for (const [cardId] of needs.entries()) {
     const coeffs: CardCoefficients = [1.0];
