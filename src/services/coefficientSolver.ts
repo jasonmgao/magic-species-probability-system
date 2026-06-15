@@ -376,9 +376,9 @@ export async function solveCoefficientsAsync(
   let week1Coeffs = initializeCoefficients(week1Needs, week1Deadline, targetRate);
   let week2Coeffs = initializeCoefficients(week2Needs, week2Deadline, targetRate);
 
-  const maxIterations = 60;
-  const tolerance = 0.3;
-  let learningRate = 0.8;
+  const maxIterations = 15;
+  const tolerance = 1.0;
+  let learningRate = 0.3;
   let bestError = Infinity;
   let bestCoeffs = {
     week1: JSON.parse(JSON.stringify(week1Coeffs)) as Record<string, CardCoefficients>,
@@ -465,18 +465,23 @@ export async function solveCoefficientsAsync(
     const adjustCoefficients = (coeffs: CardCoefficients, error: number) => {
       for (let i = 1; i < coeffs.length; i++) {
         if (error > 0) {
+          // 中奖率太高，降低系数
           const ratio = error / targetRate;
-          const factor = Math.pow(0.1, ratio * learningRate);
+          // 限制单次调整幅度，避免调整过度
+          const factor = Math.max(0.7, Math.pow(0.1, ratio * learningRate * 0.3));
           coeffs[i] *= factor;
         } else {
+          // 中奖率太低，提高系数，但保守一些
           const ratio = Math.abs(error) / targetRate;
-          const factor = Math.pow(1.2, ratio * learningRate);
+          const factor = Math.min(1.3, Math.pow(1.2, ratio * learningRate * 0.2));
           coeffs[i] *= factor;
         }
-        coeffs[i] = Math.max(0.000001, Math.min(0.5, coeffs[i]));
+        // 更严格的上下限
+        coeffs[i] = Math.max(0.00005, Math.min(0.1, coeffs[i]));
       }
+      // 确保单调递减
       for (let i = 1; i < coeffs.length; i++) {
-        coeffs[i] = Math.min(coeffs[i], coeffs[i - 1] * 0.95);
+        coeffs[i] = Math.min(coeffs[i], coeffs[i - 1] * 0.98);
       }
     };
 
