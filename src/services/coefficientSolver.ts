@@ -103,29 +103,82 @@ export function solveCoefficients(
     comboCards.push({ cards, maxCounts });
   }
 
-  // 网格搜索范围：更精细的搜索
-  // 第一组系数（对应 AaB/A/B等）
-  const rangeA: number[] = [];
-  for (let v = 0.001; v <= 0.08; v += 0.002) {
-    rangeA.push(parseFloat(v.toFixed(4)));
+  // 两阶段搜索策略
+  // 第一阶段：粗搜索找到大致范围
+  // 第二阶段：细搜索精确优化
+
+  // 扩大搜索范围：第一套通常需要更大的系数（0.005-0.15）
+  const coarseRangeA: number[] = [];
+  for (let v = 0.005; v <= 0.15; v += 0.01) {
+    coarseRangeA.push(parseFloat(v.toFixed(3)));
   }
-  // 第二组系数（对应 CcD/C/D等）
-  const rangeC: number[] = [];
-  for (let v = 0.001; v <= 0.03; v += 0.001) {
-    rangeC.push(parseFloat(v.toFixed(4)));
+  const coarseRangeC: number[] = [];
+  for (let v = 0.003; v <= 0.05; v += 0.005) {
+    coarseRangeC.push(parseFloat(v.toFixed(3)));
   }
 
   let bestResult: SolverResult | null = null;
   let minError = Infinity;
+  let bestA = 0.02, bestC = 0.01;
 
-  // 只搜索前40个组合以避免过长计算
-  let searchCount = 0;
-  const maxSearch = 40;
+  // 第一阶段：粗搜索
+  for (const coeffA of coarseRangeA) {
+    for (const coeffC of coarseRangeC) {
+      // ... coefficient setup
+      const coefficients: Record<string, number> = {};
+      if (comboCards[0]) {
+        for (const card of comboCards[0].cards) {
+          coefficients[card] = coeffA;
+        }
+      }
+      if (comboCards[1]) {
+        for (const card of comboCards[1].cards) {
+          coefficients[card] = Math.min(coefficients[card] ?? 1, coeffC);
+        }
+      }
 
-  for (const coeffA of rangeA) {
-    for (const coeffC of rangeC) {
-      searchCount++;
-      if (searchCount > maxSearch) break;
+      const rates = runWeightedSim(comboCards, coefficients, 1000);
+      let totalError = 0;
+      for (let i = 0; i < setup.combinations.length; i++) {
+        const rate = rates[i] ?? 0;
+        totalError += Math.abs(rate - targetRate);
+      }
+
+      if (totalError < minError) {
+        minError = totalError;
+        bestA = coeffA;
+        bestC = coeffC;
+        bestResult = {
+          coefficients: {...coefficients},
+          combinationRates: Object.fromEntries(
+            setup.combinations.map((c, i) => [c.name, rates[i] ?? 0])
+          ),
+          fullCollectionRate: rates[2] ?? 0,
+          converged: totalError < 0.5,
+          error: totalError,
+        };
+      }
+    }
+  }
+
+  // 第二阶段：在最佳值附近细搜索
+  const fineRangeA: number[] = [];
+  const fineMinA = Math.max(0.001, bestA - 0.02);
+  const fineMaxA = bestA + 0.02;
+  for (let v = fineMinA; v <= fineMaxA; v += 0.002) {
+    fineRangeA.push(parseFloat(v.toFixed(4)));
+  }
+  const fineRangeC: number[] = [];
+  const fineMinC = Math.max(0.001, bestC - 0.01);
+  const fineMaxC = bestC + 0.01;
+  for (let v = fineMinC; v <= fineMaxC; v += 0.001) {
+    fineRangeC.push(parseFloat(v.toFixed(4)));
+  }
+
+  for (const coeffA of fineRangeA) {
+    for (const coeffC of fineRangeC) {
+      // 跳过已计算过的粗搜索点
+      if (coarseRangeA.includes(coeffA) && coarseRangeC.includes(coeffC)) continue;
 
       // 构建系数表
       const coefficients: Record<string, number> = {};
@@ -170,7 +223,7 @@ export function solveCoefficients(
       // 如果误差很小，提前退出
       if (totalError < 0.3) break;
     }
-    if (searchCount > maxSearch) break;
+    if (minError < 0.3) break;
   }
 
   return bestResult || {
@@ -400,19 +453,24 @@ export function generateCoefficientReport(
     const maxNeed = cardMaxNeeds[card] || 1;
     const coeff = coefficients[card] ?? 0.02;
 
-    // 根据最大需求数量分类
-    // 需要3张：缺3(0张)->100%, 缺2(1张)->coeff, 缺1(2张)->0%
-    // 需要2张：缺2(0张)->100%, 缺1(1张)->coeff
-    // 需要1张：缺1(0张)->100%
+    // 正确逻辑：
+    // 缺N张 = 还需要N张 = 当前持有 (maxNeed - N) 张
+    // 需要2张的卡（如A）：
+    //   - 缺2张 = 持有0张，系数100%
+    //   - 缺1张 = 持有1张，系数coeff（还能以小概率获得第2张）
+    // 需要1张的卡（如B）：
+    //   - 缺1张 = 持有0张，系数100%
+    //   - 持有1张后不能再获得（但这不是"缺X张"状态）
+
     if (maxNeed >= 3) {
-      result.byMissingCount.missing3[card] = 1.0;
-      result.byMissingCount.missing2[card] = coeff;
-      result.byMissingCount.missing1[card] = 0;
+      result.byMissingCount.missing3[card] = 1.0;  // 缺3=持有0
+      result.byMissingCount.missing2[card] = coeff; // 缺2=持有1
+      result.byMissingCount.missing1[card] = coeff * coeff; // 缺1=持有2（系数二次降权）
     } else if (maxNeed === 2) {
-      result.byMissingCount.missing2[card] = 1.0;  // 缺2张时持有0张，系数100%
-      result.byMissingCount.missing1[card] = coeff; // 缺1张时持有1张，系数coeff
+      result.byMissingCount.missing2[card] = 1.0;   // 缺2=持有0
+      result.byMissingCount.missing1[card] = coeff; // 缺1=持有1（还能获得）
     } else {
-      result.byMissingCount.missing1[card] = 1.0;  // 缺1张时持有0张，系数100%
+      result.byMissingCount.missing1[card] = 1.0;   // 缺1=持有0
     }
     result.allCoefficients[card] = coeff;
   }
@@ -422,15 +480,14 @@ export function generateCoefficientReport(
     const maxNeed = cardMaxNeeds[card] || 1;
     const coeff = coefficients[card] ?? 0.008;
 
-    // 如果卡片已在第一组，使用较小的系数
-    const finalCoeff = result.allCoefficients[card]
-      ? Math.min(result.allCoefficients[card], coeff)
-      : coeff;
+    // 如果卡片已在第一组，合并系数（取更小值二次应用）
+    const baseCoeff = result.allCoefficients[card];
+    const finalCoeff = baseCoeff !== undefined ? Math.min(baseCoeff, coeff) : coeff;
 
     if (maxNeed >= 3) {
       result.byMissingCount.missing3[card] = 1.0;
       result.byMissingCount.missing2[card] = finalCoeff;
-      result.byMissingCount.missing1[card] = 0;
+      result.byMissingCount.missing1[card] = finalCoeff * finalCoeff;
     } else if (maxNeed === 2) {
       result.byMissingCount.missing2[card] = 1.0;
       result.byMissingCount.missing1[card] = finalCoeff;
