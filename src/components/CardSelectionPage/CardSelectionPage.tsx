@@ -367,51 +367,36 @@ export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps
                     style={{ marginBottom: 16 }}
                   />
 
-                  {/* 按卡片分组显示系数 */}
-                  {(() => {
-                    // 收集每张卡在哪几周出现
-                    const cardWeeks: Record<string, { week: number, count: number }[]> = {};
-                    combinations.forEach((combo, weekIdx) => {
-                      combo.requirements.forEach(req => {
-                        if (!cardWeeks[req.cardId]) {
-                          cardWeeks[req.cardId] = [];
-                        }
-                        cardWeeks[req.cardId].push({ week: weekIdx + 1, count: req.count });
-                      });
-                    });
-
-                    return Object.entries(cardWeeks).map(([card, weeks]) => {
-                      const isMultiWeek = weeks.length > 1;
-                      return (
-                        <div
-                          key={card}
-                          style={{
-                            marginBottom: 16,
-                            padding: 12,
-                            backgroundColor: isMultiWeek ? '#fff2e8' : (weeks[0].week === 1 ? '#f6ffed' : '#e6f7ff'),
-                            borderRadius: 8,
-                            border: isMultiWeek ? '2px solid #ff7a45' : 'none'
-                          }}
-                        >
-                          <Text strong style={{ color: isMultiWeek ? '#ff7a45' : (weeks[0].week === 1 ? '#52c41a' : '#1890ff') }}>
-                            {card} ({CARD_TYPES[card]}) {isMultiWeek && '⚠️ 两周都出现'}
-                          </Text>
-                          <div style={{ marginTop: 8 }}>
-                            {weeks.map(({ week, count }) => {
-                              const coeff = result.allCoefficients[card] || 0.02;
-                              return (
-                                <div key={week} style={{ marginBottom: 4 }}>
-                                  <Tag color={week === 1 ? 'green' : 'blue'}>
-                                    第{week}周 (需求{count}张): 降权系数 {(coeff * 100).toFixed(2)}%
-                                  </Tag>
-                                </div>
-                              );
-                            })}
-                          </div>
+                  {/* 按套显示系数 */}
+                  {combinations.map((combo, idx) => {
+                    const coeffs = result.comboCoeffs?.[combo.name] || { missing3: 1.0, missing2: 0.02, missing1: 0.01 };
+                    return (
+                      <div
+                        key={combo.name}
+                        style={{
+                          marginBottom: 16,
+                          padding: 16,
+                          backgroundColor: idx === 0 ? '#f6ffed' : '#e6f7ff',
+                          borderRadius: 8,
+                        }}
+                      >
+                        <Text strong style={{ color: idx === 0 ? '#52c41a' : '#1890ff', fontSize: 16 }}>
+                          第{idx + 1}套组合：{combo.requirements.map(r => `${r.cardId}×${r.count}`).join(' + ')}
+                        </Text>
+                        <div style={{ marginTop: 12, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                          <Tag color="success" style={{ fontSize: 14, padding: '4px 12px' }}>
+                            缺3张（0张）: {(coeffs.missing3 * 100).toFixed(0)}%
+                          </Tag>
+                          <Tag color="warning" style={{ fontSize: 14, padding: '4px 12px' }}>
+                            缺2张（1张）: {(coeffs.missing2 * 100).toFixed(2)}%
+                          </Tag>
+                          <Tag color="error" style={{ fontSize: 14, padding: '4px 12px' }}>
+                            缺1张（2张）: {(coeffs.missing1 * 100).toFixed(3)}%
+                          </Tag>
                         </div>
-                      );
-                    });
-                  })()}
+                      </div>
+                    );
+                  })}
 
                   <Divider />
 

@@ -89,8 +89,11 @@ function calculateMissingCount(combo: Combination, bag: Record<string, number>):
   return stillNeeded;
 }
 
+// 每套组合的系数：缺3张、缺2张、缺1张时的系数
 interface ComboCoefficients {
-  coeff: number;
+  missing3: number;  // 缺3张时（持有0张）
+  missing2: number;  // 缺2张时（持有1张）
+  missing1: number;  // 缺1张时（持有2张）
 }
 
 interface SolverResult {
@@ -123,74 +126,55 @@ export function solveCoefficients(
   const combo1 = setup.combinations[0];
   const combo2 = setup.combinations[1];
 
-  const rangeW1 = [0.01, 0.02, 0.03, 0.05, 0.08, 0.12, 0.20];
-  const rangeW2 = [0.005, 0.01, 0.015, 0.02, 0.03, 0.05, 0.08];
+  // 搜索范围：缺3张=100%（固定），只搜索缺2张和缺1张的系数
+  const rangeM2 = [0.05, 0.10, 0.15, 0.20, 0.30, 0.50];  // 缺2张系数
+  const rangeM1 = [0.01, 0.02, 0.03, 0.05, 0.08, 0.12];  // 缺1张系数
 
   let bestResult: SolverResult | null = null;
   let minError = Infinity;
-  let bestW1 = 0.03, bestW2 = 0.015;
 
-  for (const coeff1 of rangeW1) {
-    for (const coeff2 of rangeW2) {
-      const rates = runFastSim(
-        combo1, combo2,
-        { coeff: coeff1 },
-        { coeff: coeff2 },
-        trials
-      );
+  // 第一套搜索
+  for (const m2_1 of rangeM2) {
+    for (const m1_1 of rangeM1) {
+      if (m1_1 > m2_1) continue; // 缺1张系数应<=缺2张系数
 
-      const error = Math.abs(rates[0] - targetRate) + Math.abs(rates[1] - targetRate);
+      // 第二套搜索
+      for (const m2_2 of rangeM2) {
+        for (const m1_2 of rangeM1) {
+          if (m1_2 > m2_2) continue;
 
-      if (error < minError) {
-        minError = error;
-        bestW1 = coeff1;
-        bestW2 = coeff2;
-        bestResult = {
-          comboCoeffs: {
-            [combo1.name]: { coeff: coeff1 },
-            [combo2.name]: { coeff: coeff2 },
-          },
-          combinationRates: {
-            [combo1.name]: rates[0],
-            [combo2.name]: rates[1],
-          },
-          fullCollectionRate: 0,
-          converged: error < 0.5,
-          error,
-        };
+          const rates = runFastSim(
+            combo1, combo2,
+            { missing3: 1.0, missing2: m2_1, missing1: m1_1 },
+            { missing3: 1.0, missing2: m2_2, missing1: m1_2 },
+            trials
+          );
+
+          const error = Math.abs(rates[0] - targetRate) + Math.abs(rates[1] - targetRate);
+
+          if (error < minError) {
+            minError = error;
+            bestResult = {
+              comboCoeffs: {
+                [combo1.name]: { missing3: 1.0, missing2: m2_1, missing1: m1_1 },
+                [combo2.name]: { missing3: 1.0, missing2: m2_2, missing1: m1_2 },
+              },
+              combinationRates: {
+                [combo1.name]: rates[0],
+                [combo2.name]: rates[1],
+              },
+              fullCollectionRate: 0,
+              converged: error < 0.5,
+              error,
+            };
+          }
+          if (minError < 0.3) break;
+        }
+        if (minError < 0.3) break;
       }
+      if (minError < 0.3) break;
     }
     if (minError < 0.3) break;
-  }
-
-  // 细搜索
-  const fineW1 = [bestW1 * 0.8, bestW1 * 0.9, bestW1, bestW1 * 1.1, bestW1 * 1.2].filter(x => x <= 0.30 && x >= 0.005);
-  const fineW2 = [bestW2 * 0.8, bestW2 * 0.9, bestW2, bestW2 * 1.1, bestW2 * 1.2].filter(x => x <= 0.15 && x >= 0.003);
-
-  for (const coeff1 of fineW1) {
-    for (const coeff2 of fineW2) {
-      if (rangeW1.includes(coeff1) && rangeW2.includes(coeff2)) continue;
-
-      const rates = runFastSim(combo1, combo2, { coeff: coeff1 }, { coeff: coeff2 }, trials * 2);
-      const error = Math.abs(rates[0] - targetRate) + Math.abs(rates[1] - targetRate);
-
-      if (error < minError) {
-        minError = error;
-        bestResult = {
-          comboCoeffs: {
-            [combo1.name]: { coeff: coeff1 },
-            [combo2.name]: { coeff: coeff2 },
-          },
-          combinationRates: {
-            [combo1.name]: rates[0],
-            [combo2.name]: rates[1],
-          },
-          fullCollectionRate: 0,
-          converged: error < 0.5,
-          error,
-        };
-      }
-    }
   }
 
   // 计算最终全收集率
@@ -210,8 +194,8 @@ export function solveCoefficients(
 
   return bestResult || {
     comboCoeffs: {
-      [combo1.name]: { coeff: 0.03 },
-      [combo2.name]: { coeff: 0.015 },
+      [combo1.name]: { missing3: 1.0, missing2: 0.03, missing1: 0.01 },
+      [combo2.name]: { missing3: 1.0, missing2: 0.015, missing1: 0.005 },
     },
     combinationRates: {},
     fullCollectionRate: 0,
@@ -285,12 +269,22 @@ function calculateFullCollectionRate(
       // 复制一份用于应用降权
       const p_s = { ...p_raw };
 
+      // 计算各套组合的缺卡数量
+      const w1Missing = calculateMissingCount(combo1, bag);
+      const w2Missing = calculateMissingCount(combo2, bag);
+
+      // 获取对应的系数
+      const w1Coeff = w1Missing >= 3 ? coeffs1.missing3 :
+                     w1Missing === 2 ? coeffs1.missing2 : coeffs1.missing1;
+      const w2Coeff = w2Missing >= 3 ? coeffs2.missing3 :
+                     w2Missing === 2 ? coeffs2.missing2 : coeffs2.missing1;
+
       // 应用降权系数：只对组合卡生效，填充卡不应用降权
       for (const card of combo1Cards) {
-        if (bag[card] >= 1) p_s[card] *= coeffs1.coeff;
+        if (bag[card] >= 1) p_s[card] *= w1Coeff;
       }
       for (const card of combo2Cards) {
-        if (bag[card] >= 1) p_s[card] *= coeffs2.coeff;
+        if (bag[card] >= 1) p_s[card] *= w2Coeff;
       }
       // 填充卡E-J：不应用任何降权，可以无限获得
 
@@ -391,8 +385,11 @@ function runSim(
       const w1Missing = calculateMissingCount(combo1, bag);
       const w2Missing = calculateMissingCount(combo2, bag);
 
-      const w1Coeff = w1Missing >= 3 ? 1.0 : coeffs1.coeff;
-      const w2Coeff = w2Missing >= 3 ? 1.0 : coeffs2.coeff;
+      // 根据缺卡数量选择对应的系数
+      const w1Coeff = w1Missing >= 3 ? coeffs1.missing3 :
+                     w1Missing === 2 ? coeffs1.missing2 : coeffs1.missing1;
+      const w2Coeff = w2Missing >= 3 ? coeffs2.missing3 :
+                     w2Missing === 2 ? coeffs2.missing2 : coeffs2.missing1;
 
       for (const card of combo1Cards) {
         const cardType = getCardType(card);
@@ -424,9 +421,13 @@ function runSim(
       if (isCLucky) luckyC[week] = 1;
 
       const w1Missing = calculateMissingCount(combo1, bag);
-      const w1Coeff = w1Missing >= 3 ? 1.0 : (w1Missing > 0 ? coeffs1.coeff : 0.001);
+      const w1Coeff = w1Missing >= 3 ? coeffs1.missing3 :
+                     w1Missing === 2 ? coeffs1.missing2 :
+                     w1Missing === 1 ? coeffs1.missing1 : 0.001;
       const w2Missing = calculateMissingCount(combo2, bag);
-      const w2Coeff = w2Missing >= 3 ? 1.0 : coeffs2.coeff;
+      const w2Coeff = w2Missing >= 3 ? coeffs2.missing3 :
+                     w2Missing === 2 ? coeffs2.missing2 :
+                     w2Missing === 1 ? coeffs2.missing1 : 0.001;
 
       for (const card of combo1Cards) {
         const cardType = getCardType(card);
@@ -468,6 +469,7 @@ export function generateCoefficientReport(
   const result: CoefficientResult = {
     byMissingCount: { missing3: {}, missing2: {}, missing1: {} },
     allCoefficients: {},
+    comboCoeffs,
     combinationRates,
     fullCollectionRate,
     converged: solverResult.converged,
@@ -475,14 +477,14 @@ export function generateCoefficientReport(
   };
 
   for (const combo of setup.combinations) {
-    const coeff = comboCoeffs[combo.name]?.coeff ?? 0.02;
+    const coeffs = comboCoeffs[combo.name] ?? { missing3: 1.0, missing2: 0.02, missing1: 0.01 };
     const cards = combo.requirements.map(r => r.cardId);
 
     for (const card of cards) {
-      result.byMissingCount.missing3[card] = 1.0;
-      result.byMissingCount.missing2[card] = coeff;
-      result.byMissingCount.missing1[card] = coeff;
-      result.allCoefficients[card] = coeff;
+      result.byMissingCount.missing3[card] = coeffs.missing3;
+      result.byMissingCount.missing2[card] = coeffs.missing2;
+      result.byMissingCount.missing1[card] = coeffs.missing1;
+      result.allCoefficients[card] = coeffs.missing2; // 默认用缺2张的系数
     }
   }
 

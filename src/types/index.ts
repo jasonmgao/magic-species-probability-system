@@ -63,6 +63,13 @@ export interface MissingCountCoeffs {
   [cardId: string]: number;
 }
 
+// 每套组合的系数
+export interface ComboCoeffs {
+  missing3: number;  // 缺3张时（持有0张）
+  missing2: number;  // 缺2张时（持有1张）
+  missing1: number;  // 缺1张时（持有2张）
+}
+
 /**
  * 系数求解结果
  */
@@ -75,6 +82,8 @@ export interface CoefficientResult {
   };
   // 完整系数表（每张卡持有1张时的降权系数）
   allCoefficients: Record<string, number>;
+  // 每套组合的系数
+  comboCoeffs: Record<string, ComboCoeffs>;
   // 组合成功率（每组组合的中奖率）
   combinationRates: Record<string, number>;
   // 14天全收集率
