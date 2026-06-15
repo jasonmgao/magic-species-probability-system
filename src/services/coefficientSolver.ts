@@ -268,8 +268,8 @@ function calculateFullCollectionRate(
       const isBLucky = isALucky;
       const isDLucky = isCLucky;
 
-      // 获取基础概率
-      const p_s: Record<string, number> = {
+      // 获取基础概率（原始概率，用于计算Others）
+      const p_raw: Record<string, number> = {
         'A': getSingleP(aType, dayType, isALucky),
         'B': getSingleP(aType, dayType, isBLucky),
         'C': getSingleP(cType, dayType, isCLucky),
@@ -282,6 +282,9 @@ function calculateFullCollectionRate(
         'J': getSingleP(cType, dayType, false),
       };
 
+      // 复制一份用于应用降权
+      const p_s = { ...p_raw };
+
       // 应用降权系数（只影响组合卡的多张获取）
       for (const card of combo1Cards) {
         if (bag[card] === 1) p_s[card] *= coeffs1.coeff;
@@ -293,35 +296,36 @@ function calculateFullCollectionRate(
       }
       // 填充卡只许1张
       for (const card of OTHER_CARDS) {
-        if (bag[card] >= 1) p_s[card] = 0;
+        if (bag[card] >= 1) {
+          p_raw[card] = 0;
+          p_s[card] = 0;
+        }
       }
 
-      // 转换为日概率
+      // 转换为日概率（应用降权后的）
       const w: Record<string, number> = {};
-      let wSum = 0;
       for (const card of ALL_CARDS) {
         w[card] = singleToDay(p_s[card]);
-        wSum += w[card];
       }
 
-      // Others权重
-      const wOthers = Math.max(0, 1.0 - wSum);
+      // Others权重 = 1 - 原始权重之和（参考Python代码）
+      const wRawSum = ALL_CARDS.reduce((sum, card) => sum + singleToDay(p_raw[card]), 0);
+      const wOthers = Math.max(0, 1.0 - wRawSum);
 
       // 归一化并轮盘赌
+      const wSum = ALL_CARDS.reduce((sum, card) => sum + w[card], 0);
       const total = wSum + wOthers;
       const r = Math.random() * total;
       let cumsum = 0;
-      let obtained = false;
 
       for (const card of ALL_CARDS) {
         cumsum += w[card];
         if (r < cumsum) {
           bag[card]++;
-          obtained = true;
           break;
         }
       }
-      // 如果没获得卡，就是Others
+      // 如果没获得卡，就是Others（不增加任何卡）
     }
 
     // 检查是否10张全齐
