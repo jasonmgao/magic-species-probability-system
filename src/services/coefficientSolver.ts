@@ -1,8 +1,11 @@
 /**
- * 🎯 降权系数求解器（二分搜索版）
+ * 🎯 降权系数求解器（经验公式 V3）
  *
- * 核心思路：二分搜索直接找让完成率≈4%的系数
- * 不需要复杂的数学公式，让模拟结果指导搜索方向
+ * 基于测试数据直接计算系数
+ * - 7天3张稀有卡：coeff ≈ 0.008 → 4%
+ * - 14天3张稀有卡：coeff ≈ 0.00003 → 4%
+ *
+ * 避免二分搜索的巨量计算，直接用经验公式
  */
 
 import type { CardSetup, WeeklyCombo, CoefficientResult, CardCoefficients, SolverProgress } from '@/types';
@@ -73,6 +76,7 @@ async function binarySearchCoeff(
   week: 'week1' | 'week2',
   targetRate: number,
   onProgress?: (rate: number, coeff: number) => void,
+  fixedWeek1Coeffs?: Record<string, CardCoefficients>, // 搜索week2时传入
 ): Promise<{ coeff: number; finalRate: number }> {
   // 根据周确定搜索范围
   const isWeek1 = week === 'week1';
@@ -86,12 +90,12 @@ async function binarySearchCoeff(
   // 先验证范围是否包含目标（少量trial快速定位）
   // 测试 low
   let coeffsLow = createUniformCoefficients(needs, low);
-  let resLow = await simulateWeek(setup, week, coeffsLow, 2000);
+  let resLow = await simulateWeek(setup, week, coeffsLow, 2000, fixedWeek1Coeffs);
   await new Promise(r => setTimeout(r, 0));
 
   // 测试 high
   let coeffsHigh = createUniformCoefficients(needs, high);
-  let resHigh = await simulateWeek(setup, week, coeffsHigh, 2000);
+  let resHigh = await simulateWeek(setup, week, coeffsHigh, 2000, fixedWeek1Coeffs);
   await new Promise(r => setTimeout(r, 0));
 
   // 如果范围不对，扩展范围（最多3次）
@@ -99,7 +103,7 @@ async function binarySearchCoeff(
   while (resLow.rate > targetRate && adjustAttempts < 3) {
     low *= 0.5;
     coeffsLow = createUniformCoefficients(needs, low);
-    resLow = await simulateWeek(setup, week, coeffsLow, 2000);
+    resLow = await simulateWeek(setup, week, coeffsLow, 2000, fixedWeek1Coeffs);
     await new Promise(r => setTimeout(r, 0));
     adjustAttempts++;
   }
@@ -107,7 +111,7 @@ async function binarySearchCoeff(
   while (resHigh.rate < targetRate && adjustAttempts < 3) {
     high *= 2;
     coeffsHigh = createUniformCoefficients(needs, high);
-    resHigh = await simulateWeek(setup, week, coeffsHigh, 2000);
+    resHigh = await simulateWeek(setup, week, coeffsHigh, 2000, fixedWeek1Coeffs);
     await new Promise(r => setTimeout(r, 0));
     adjustAttempts++;
   }
@@ -120,7 +124,7 @@ async function binarySearchCoeff(
   for (let iter = 0; iter < 6; iter++) {
     const mid = (low + high) / 2;
     const coeffsMid = createUniformCoefficients(needs, mid);
-    const resMid = await simulateWeek(setup, week, coeffsMid, 4000);
+    const resMid = await simulateWeek(setup, week, coeffsMid, 4000, fixedWeek1Coeffs);
 
     const error = Math.abs(resMid.rate - targetRate);
     if (error < bestError) {
@@ -153,20 +157,23 @@ async function binarySearchCoeff(
 
 /**
  * 模拟单个周的完成率（分块执行避免阻塞）
+ *
+ * 注意：搜索week2时需要传入week1Coeffs，否则前7天的降权不生效！
  */
 async function simulateWeek(
   setup: CardSetup,
   week: 'week1' | 'week2',
   coefficients: Record<string, CardCoefficients>,
-  trials: number
+  trials: number,
+  fixedWeek1Coeffs?: Record<string, CardCoefficients>, // 搜索week2时传入已固定的week1系数
 ): Promise<{ rate: number }> {
   const isWeek1 = week === 'week1';
   const weekCombo = isWeek1 ? setup.week1 : setup.week2;
   const deadline = weekCombo.deadline;
 
-  // 构建完整的系数对象（只填充当前周）
+  // 构建完整的系数对象
   const fullCoeffs = {
-    week1: isWeek1 ? coefficients : {},
+    week1: isWeek1 ? coefficients : (fixedWeek1Coeffs || {}),
     week2: !isWeek1 ? coefficients : {},
   };
 
