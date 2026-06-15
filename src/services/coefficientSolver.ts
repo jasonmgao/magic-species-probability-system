@@ -406,9 +406,9 @@ export interface SolverResult {
 export function solveCoefficients(
   setup: CardSetup,
   targetRate: number = 4.0,
-  tolerance: number = 0.1,
-  maxIterations: number = 50,
-  trialsPerIteration: number = 30000,
+  tolerance: number = 0.2,
+  maxIterations: number = 25,
+  trialsPerIteration: number = 8000,
   onProgress?: (progress: SolverProgress) => void
 ): SolverResult {
   // 1. 统计两周的卡牌需求和卡槽数
@@ -562,5 +562,5 @@ export function solveCoefficientsQuick(
   targetRate: number = 4.0,
   onProgress?: (progress: SolverProgress) => void
 ): SolverResult {
-  return solveCoefficients(setup, targetRate, 0.2, 20, 15000, onProgress);
+  return solveCoefficients(setup, targetRate, 0.3, 12, 5000, onProgress);
 }

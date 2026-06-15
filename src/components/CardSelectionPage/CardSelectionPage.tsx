@@ -162,7 +162,7 @@ export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps
     try {
       const coefficientResult = quick
         ? await runQuickSimulation(setup, 4.0, (p: SolverProgress) => setProgress(p))
-        : await runFullSimulationAsync(setup, 4.0, 30000, (p: SolverProgress) => setProgress(p));
+        : await runFullSimulationAsync(setup, 4.0, undefined, (p: SolverProgress) => setProgress(p));
 
       setResult(coefficientResult);
 
