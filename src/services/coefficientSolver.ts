@@ -147,8 +147,9 @@ function initializeCoefficients(
       baseCoeff = isMagic ? 0.008 : (isRare ? 0.012 : 0.015);
     } else {
       // 第二周：14天窗口，必须很严格
-      // 测试数据：0.0005 → 0.8%, 要 → 4%，尝试 0.00065
-      baseCoeff = isMagic ? 0.0004 : (isRare ? 0.00065 : 0.001);
+      // 数据：0.0005→0.8%, 0.00065→?, 0.005→30%
+      // 尝试0.001，应该接近4%
+      baseCoeff = isMagic ? 0.0008 : (isRare ? 0.001 : 0.002);
     }
 
     // 需要多张的卡，后续系数递减
