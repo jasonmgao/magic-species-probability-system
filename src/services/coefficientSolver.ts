@@ -1,9 +1,9 @@
 /**
- * 降权系数求解器（修正版）
- * 参考用户的Python代码逻辑
+ * 降权系数求解器（最终版）
+ * 核心理解：缺几张是针对组合的状态，不是单张卡
  */
 
-import type { CardSetup, CoefficientResult } from '@/types';
+import type { CardSetup, Combination, CoefficientResult } from '@/types';
 
 const ALL_CARDS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 
@@ -73,12 +73,35 @@ function getSingleP(
   return 0.0;
 }
 
+// 组合系数配置：针对该组合的缺卡状态
+interface ComboCoefficients {
+  missing3: number;  // 缺3张时的系数（空组合）
+  missing2: number;  // 缺2张时的系数（持有1张）
+  missing1: number;  // 缺1张时的系数（持有2张或1张满足1需求）
+}
+
 interface SolverResult {
-  coefficients: Record<string, number>; // 每张卡的降权系数（持有1张时）
+  comboCoeffs: Record<string, ComboCoefficients>; // 每个组合的系数配置
   combinationRates: Record<string, number>;
   fullCollectionRate: number;
   converged: boolean;
   error: number;
+}
+
+/**
+ * 计算组合当前缺几张
+ * 例如：AAB组合，用户持有2A0B => 只需要1张B，缺1张
+ *       AAB组合，用户持有1A0B => 还需要1A1B，缺2张
+ *       AAB组合，用户持有1A1B => 只需要1张A，缺1张
+ */
+function calculateMissingCount(combo: Combination, bag: Record<string, number>): number {
+  let stillNeeded = 0;
+  for (const req of combo.requirements) {
+    const current = bag[req.cardId] || 0;
+    const need = Math.max(0, req.count - current);
+    stillNeeded += need;
+  }
+  return stillNeeded;
 }
 
 /**
@@ -91,143 +114,96 @@ export function solveCoefficients(
   trials: number = 2000
 ): SolverResult {
 
-  // 按组合分组收集卡片及其最大需求
-  const comboCards: Array<{cards: string[], maxCounts: number[]}> = [];
-  for (const combo of setup.combinations) {
-    const cards: string[] = [];
-    const maxCounts: number[] = [];
-    for (const req of combo.requirements) {
-      cards.push(req.cardId);
-      maxCounts.push(req.count);
-    }
-    comboCards.push({ cards, maxCounts });
+  if (setup.combinations.length < 2) {
+    return {
+      comboCoeffs: {},
+      combinationRates: {},
+      fullCollectionRate: 0,
+      converged: false,
+      error: 999,
+    };
   }
 
-  // 两阶段搜索策略
-  // 第一阶段：粗搜索找到大致范围
-  // 第二阶段：细搜索精确优化
+  const combo1 = setup.combinations[0];
+  const combo2 = setup.combinations[1];
 
-  // 扩大搜索范围：第一套通常需要更大的系数（0.005-0.15）
-  const coarseRangeA: number[] = [];
-  for (let v = 0.005; v <= 0.15; v += 0.01) {
-    coarseRangeA.push(parseFloat(v.toFixed(3)));
-  }
-  const coarseRangeC: number[] = [];
-  for (let v = 0.003; v <= 0.05; v += 0.005) {
-    coarseRangeC.push(parseFloat(v.toFixed(3)));
-  }
+  // 为每个组合独立配置系数
+  // 第一组：AaB（A需要2张，B需要1张，总需求3张）
+  // 第二组：CcD（C需要2张，D需要1张，总需求3张）
+
+  // 网格搜索：为两组分别找到最佳系数
+  // 第一组系数范围
+  const rangeW1 = [0.005, 0.01, 0.015, 0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.10, 0.12, 0.15];
+  // 第二组系数范围
+  const rangeW2 = [0.003, 0.005, 0.008, 0.01, 0.012, 0.015, 0.02, 0.025, 0.03, 0.04, 0.05];
 
   let bestResult: SolverResult | null = null;
   let minError = Infinity;
-  let bestA = 0.02, bestC = 0.01;
 
-  // 第一阶段：粗搜索
-  for (const coeffA of coarseRangeA) {
-    for (const coeffC of coarseRangeC) {
-      // ... coefficient setup
-      const coefficients: Record<string, number> = {};
-      if (comboCards[0]) {
-        for (const card of comboCards[0].cards) {
-          coefficients[card] = coeffA;
+  for (const coeffW1_m3 of rangeW1) {        // 第一组缺3张系数
+    for (const coeffW1_m2 of rangeW1) {      // 第一组缺2张系数
+      if (coeffW1_m2 > coeffW1_m3) continue; // 缺得少，系数应更小或相等
+      for (const coeffW1_m1 of rangeW1) {    // 第一组缺1张系数
+        if (coeffW1_m1 > coeffW1_m2) continue;
+
+        for (const coeffW2_m3 of rangeW2) {      // 第二组缺3张系数
+          for (const coeffW2_m2 of rangeW2) {    // 第二组缺2张系数
+            if (coeffW2_m2 > coeffW2_m3) continue;
+            for (const coeffW2_m1 of rangeW2) {  // 第二组缺1张系数
+              if (coeffW2_m1 > coeffW2_m2) continue;
+
+              const w1coeffs: ComboCoefficients = {
+                missing3: coeffW1_m3,
+                missing2: coeffW1_m2,
+                missing1: coeffW1_m1,
+              };
+              const w2coeffs: ComboCoefficients = {
+                missing3: coeffW2_m3,
+                missing2: coeffW2_m2,
+                missing1: coeffW2_m1,
+              };
+
+              const rates = runWeightedSim(
+                combo1, combo2, w1coeffs, w2coeffs, trials
+              );
+
+              const error = Math.abs(rates[0] - targetRate) + Math.abs(rates[1] - targetRate);
+
+              if (error < minError) {
+                minError = error;
+                bestResult = {
+                  comboCoeffs: {
+                    [combo1.name]: w1coeffs,
+                    [combo2.name]: w2coeffs,
+                  },
+                  combinationRates: {
+                    [combo1.name]: rates[0],
+                    [combo2.name]: rates[1],
+                  },
+                  fullCollectionRate: 0, // 暂不算
+                  converged: error < 0.5,
+                  error,
+                };
+              }
+
+              if (error < 0.3) break;
+            }
+            if (minError < 0.3) break;
+          }
+          if (minError < 0.3) break;
         }
+        if (minError < 0.3) break;
       }
-      if (comboCards[1]) {
-        for (const card of comboCards[1].cards) {
-          coefficients[card] = Math.min(coefficients[card] ?? 1, coeffC);
-        }
-      }
-
-      const rates = runWeightedSim(comboCards, coefficients, 1000);
-      let totalError = 0;
-      for (let i = 0; i < setup.combinations.length; i++) {
-        const rate = rates[i] ?? 0;
-        totalError += Math.abs(rate - targetRate);
-      }
-
-      if (totalError < minError) {
-        minError = totalError;
-        bestA = coeffA;
-        bestC = coeffC;
-        bestResult = {
-          coefficients: {...coefficients},
-          combinationRates: Object.fromEntries(
-            setup.combinations.map((c, i) => [c.name, rates[i] ?? 0])
-          ),
-          fullCollectionRate: rates[2] ?? 0,
-          converged: totalError < 0.5,
-          error: totalError,
-        };
-      }
-    }
-  }
-
-  // 第二阶段：在最佳值附近细搜索
-  const fineRangeA: number[] = [];
-  const fineMinA = Math.max(0.001, bestA - 0.02);
-  const fineMaxA = bestA + 0.02;
-  for (let v = fineMinA; v <= fineMaxA; v += 0.002) {
-    fineRangeA.push(parseFloat(v.toFixed(4)));
-  }
-  const fineRangeC: number[] = [];
-  const fineMinC = Math.max(0.001, bestC - 0.01);
-  const fineMaxC = bestC + 0.01;
-  for (let v = fineMinC; v <= fineMaxC; v += 0.001) {
-    fineRangeC.push(parseFloat(v.toFixed(4)));
-  }
-
-  for (const coeffA of fineRangeA) {
-    for (const coeffC of fineRangeC) {
-      // 跳过已计算过的粗搜索点
-      if (coarseRangeA.includes(coeffA) && coarseRangeC.includes(coeffC)) continue;
-
-      // 构建系数表
-      const coefficients: Record<string, number> = {};
-
-      // 为第一组组合的卡设置系数 coeffA
-      if (comboCards[0]) {
-        for (const card of comboCards[0].cards) {
-          coefficients[card] = coeffA;
-        }
-      }
-      // 为第二组组合的卡设置系数 coeffC
-      if (comboCards[1]) {
-        for (const card of comboCards[1].cards) {
-          // 如果卡片也在第一组中，使用较小的系数（更严格）
-          coefficients[card] = Math.min(coefficients[card] ?? 1, coeffC);
-        }
-      }
-
-      // 运行加权模拟（考虑所有幸运卡组合分布）
-      const rates = runWeightedSim(comboCards, coefficients, trials);
-
-      // 计算误差（加权平均与目标的偏差）
-      let totalError = 0;
-      for (let i = 0; i < setup.combinations.length; i++) {
-        const rate = rates[i] ?? 0;
-        totalError += Math.abs(rate - targetRate);
-      }
-
-      if (totalError < minError) {
-        minError = totalError;
-        bestResult = {
-          coefficients,
-          combinationRates: Object.fromEntries(
-            setup.combinations.map((c, i) => [c.name, rates[i] ?? 0])
-          ),
-          fullCollectionRate: rates[2] ?? 0,
-          converged: totalError < 0.5,
-          error: totalError,
-        };
-      }
-
-      // 如果误差很小，提前退出
-      if (totalError < 0.3) break;
+      if (minError < 0.3) break;
     }
     if (minError < 0.3) break;
   }
 
   return bestResult || {
-    coefficients: {},
+    comboCoeffs: {
+      [combo1.name]: { missing3: 0.02, missing2: 0.01, missing1: 0.005 },
+      [combo2.name]: { missing3: 0.01, missing2: 0.005, missing1: 0.002 },
+    },
     combinationRates: {},
     fullCollectionRate: 0,
     converged: false,
@@ -239,44 +215,48 @@ export function solveCoefficients(
  * 运行加权模拟（考虑幸运卡组合分布）
  */
 function runWeightedSim(
-  comboCards: Array<{cards: string[], maxCounts: number[]}>,
-  coefficients: Record<string, number>,
+  combo1: Combination,
+  combo2: Combination,
+  coeffs1: ComboCoefficients,
+  coeffs2: ComboCoefficients,
   trials: number
-): number[] {
-  // 每人每组的加权成功率
+): [number, number] {
   let w1Sum = 0, w2Sum = 0;
   let totalWeight = 0;
 
   for (const [aType, cType, weight] of COMBO_DIST) {
-    const [r1, r2] = runSim(comboCards, coefficients, aType as any, cType as any, trials);
+    const [r1, r2] = runSim(combo1, combo2, coeffs1, coeffs2, aType as any, cType as any, trials);
     w1Sum += r1 * weight;
     w2Sum += r2 * weight;
     totalWeight += weight;
   }
 
-  // 计算加权平均成功率（百分比）
-  const targetRates: number[] = [
+  return [
     (w1Sum / totalWeight) * 100,
     (w2Sum / totalWeight) * 100,
   ];
-
-  return targetRates;
 }
 
 /**
  * 单次模拟（一个幸运卡组合场景）
  */
 function runSim(
-  comboCards: Array<{cards: string[], maxCounts: number[]}>,
-  coefficients: Record<string, number>,
+  combo1: Combination,
+  combo2: Combination,
+  coeffs1: ComboCoefficients,
+  coeffs2: ComboCoefficients,
   aType: 'common' | 'rare' | 'magic',
   cType: 'common' | 'rare' | 'magic',
   trials: number
 ): [number, number] {
   let s1 = 0, s2 = 0;
 
+  // 收集所有组合涉及的卡
+  const combo1Cards = combo1.requirements.map(r => r.cardId);
+  const combo2Cards = combo2.requirements.map(r => r.cardId);
+
   for (let t = 0; t < trials; t++) {
-    // 生成两周的日程（每周5普通+1稀有+1神奇，随机排序）
+    // 生成两周日程
     const week1 = ['common', 'common', 'common', 'common', 'common', 'rare', 'magic'];
     const week2 = ['common', 'common', 'common', 'common', 'common', 'rare', 'magic'];
     shuffleArray(week1);
@@ -285,114 +265,98 @@ function runSim(
 
     // 背包状态
     const bag: Record<string, number> = {};
-    const luckyA = [0, 0]; // 两周的A组幸运卡状态
-    const luckyC = [0, 0]; // 两周的C组幸运卡状态
+    const luckyA = [0, 0];
+    const luckyC = [0, 0];
 
-    // 模拟14天
-    for (let day = 0; day < 14; day++) {
+    // 第一周模拟（第0-6天）
+    for (let day = 0; day < 7; day++) {
       const dayType = days[day] as 'common' | 'rare' | 'magic';
-      const week = day < 7 ? 0 : 1;
+      const week = 0;
 
-      // 判断是否是幸运卡日
       const isALucky = (dayType === aType && luckyA[week] === 0);
       if (isALucky) luckyA[week] = 1;
       const isCLucky = (dayType === cType && luckyC[week] === 0);
       if (isCLucky) luckyC[week] = 1;
 
-      // 第一组卡的抽卡概率
-      const groupA = comboCards[0];
-      const pA: number[] = [];
-      if (groupA) {
-        for (let i = 0; i < groupA.cards.length; i++) {
-          const card = groupA.cards[i];
-          const cardType = getCardType(card);
-          let p = getSingleP(cardType, dayType, isALucky);
-          // 应用降权系数
-          const count = bag[card] || 0;
-          const coeff = coefficients[card] ?? 0.02;
-          if (count === 1) p *= coeff;
-          else if (count >= 2) p = 0;
-          pA.push(p);
-        }
-      }
+      // 计算第一组缺几张
+      const w1Missing = calculateMissingCount(combo1, bag);
+      // 计算第二组缺几张
+      const w2Missing = calculateMissingCount(combo2, bag);
 
-      // 第二组卡的抽卡概率
-      const groupC = comboCards[1];
-      const pC: number[] = [];
-      if (groupC) {
-        for (let i = 0; i < groupC.cards.length; i++) {
-          const card = groupC.cards[i];
-          const cardType = getCardType(card);
-          let p = getSingleP(cardType, dayType, isCLucky);
-          // 应用降权系数
-          const count = bag[card] || 0;
-          const coeff = coefficients[card] ?? 0.008;
-          if (count === 1) p *= coeff;
-          else if (count >= 2) p = 0;
-          pC.push(p);
-        }
-      }
+      // 获得第一组的系数（基于第一组自己的缺卡状态）
+      const w1Coeff = w1Missing >= 3 ? coeffs1.missing3 :
+                     w1Missing === 2 ? coeffs1.missing2 : coeffs1.missing1;
 
-      // 模拟抽卡（每天4次=>转换为每日概率）
-      if (groupA) {
-        for (let i = 0; i < groupA.cards.length; i++) {
-          if (Math.random() < singleToDay(pA[i])) {
-            bag[groupA.cards[i]] = (bag[groupA.cards[i]] || 0) + 1;
-          }
-        }
-      }
-      if (groupC) {
-        for (let i = 0; i < groupC.cards.length; i++) {
-          if (Math.random() < singleToDay(pC[i])) {
-            bag[groupC.cards[i]] = (bag[groupC.cards[i]] || 0) + 1;
-          }
-        }
-      }
+      // 获得第二组的系数（基于第二组自己的缺卡状态）
+      const w2Coeff = w2Missing >= 3 ? coeffs2.missing3 :
+                     w2Missing === 2 ? coeffs2.missing2 : coeffs2.missing1;
 
-      // 第6天检查第一组（第7天截止前的最后一天）
-      if (day === 6 && groupA) {
-        const countsA = groupA.cards.map(c => bag[c] || 0);
-        const maxCountsA = groupA.maxCounts;
-        // 检查是否满足需求：counts[i] >= maxCounts[i]
-        let satisfiedA = true;
-        for (let i = 0; i < countsA.length; i++) {
-          if (countsA[i] < maxCountsA[i]) {
-            satisfiedA = false;
-            break;
-          }
+      // 抽卡
+      for (const card of combo1Cards) {
+        const cardType = getCardType(card);
+        let p = getSingleP(cardType, dayType, isALucky);
+        p *= w1Coeff; // 应用第一组缺卡状态的系数
+        if (Math.random() < singleToDay(p)) {
+          bag[card] = (bag[card] || 0) + 1;
         }
-        if (satisfiedA) s1++;
       }
-
-      // 第13天检查第二组（第14天截止前的最后一天）
-      if (day === 13 && groupC) {
-        const countsC = groupC.cards.map(c2 => bag[c2] || 0);
-        const maxCountsC = groupC.maxCounts;
-        let satisfiedC = true;
-        for (let i = 0; i < countsC.length; i++) {
-          if (countsC[i] < maxCountsC[i]) {
-            satisfiedC = false;
-            break;
-          }
+      for (const card of combo2Cards) {
+        const cardType = getCardType(card);
+        let p = getSingleP(cardType, dayType, isCLucky);
+        p *= w2Coeff; // 应用第二组缺卡状态的系数
+        if (Math.random() < singleToDay(p)) {
+          bag[card] = (bag[card] || 0) + 1;
         }
-        if (satisfiedC) s2++;
       }
     }
 
-    // 循环结束后再检查一次第二组（确保第14天检查）
-    const groupC2 = comboCards[1];
-    if (groupC2 && s2 === 0) {
-      const countsC2 = groupC2.cards.map(c3 => bag[c3] || 0);
-      const maxCountsC2 = groupC2.maxCounts;
-      let satisfiedC2 = true;
-      for (let i = 0; i < countsC2.length; i++) {
-        if (countsC2[i] < maxCountsC2[i]) {
-          satisfiedC2 = false;
-          break;
+    // 第6天检查第一组
+    if (calculateMissingCount(combo1, bag) === 0) s1++;
+
+    // 第二周模拟（第7-13天）
+    for (let day = 7; day < 14; day++) {
+      const dayType = days[day] as 'common' | 'rare' | 'magic';
+      const week = 1;
+
+      const isALucky = (dayType === aType && luckyA[week] === 0);
+      if (isALucky) luckyA[week] = 1;
+      const isCLucky = (dayType === cType && luckyC[week] === 0);
+      if (isCLucky) luckyC[week] = 1;
+
+      // 第二周继续积累卡片，但第一组已完成，第二组继续
+      // 注意：第二周第一组的卡也会获得，但第一组已不计算中奖
+
+      // 计算当前缺几张（第二组）
+      const w2Missing = calculateMissingCount(combo2, bag);
+      const w2Coeff = w2Missing >= 3 ? coeffs2.missing3 :
+                     w2Missing === 2 ? coeffs2.missing2 : coeffs2.missing1;
+
+      // 抽卡（两组都可能继续获得）
+      for (const card of combo1Cards) {
+        const cardType = getCardType(card);
+        let p = getSingleP(cardType, dayType, isALucky);
+        // 第一组已完成，使用缺0张系数（很小）
+        const w1Missing = calculateMissingCount(combo1, bag);
+        const w1Coeff = w1Missing >= 3 ? coeffs1.missing3 :
+                       w1Missing === 2 ? coeffs1.missing2 :
+                       w1Missing === 1 ? coeffs1.missing1 : 0.001;
+        p *= w1Coeff;
+        if (Math.random() < singleToDay(p)) {
+          bag[card] = (bag[card] || 0) + 1;
         }
       }
-      if (satisfiedC2) s2++;
+      for (const card of combo2Cards) {
+        const cardType = getCardType(card);
+        let p = getSingleP(cardType, dayType, isCLucky);
+        p *= w2Coeff;
+        if (Math.random() < singleToDay(p)) {
+          bag[card] = (bag[card] || 0) + 1;
+        }
+      }
     }
+
+    // 第13天检查第二组
+    if (calculateMissingCount(combo2, bag) === 0) s2++;
   }
 
   return [s1 / trials, s2 / trials];
@@ -410,31 +374,20 @@ function shuffleArray<T>(array: T[]): void {
 
 /**
  * 生成系数结果报告
- * 关键：根据每张卡的需求数量，正确分类到缺3/2/1张
  */
 export function generateCoefficientReport(
   setup: CardSetup,
   solverResult: SolverResult
 ): CoefficientResult {
-  const { coefficients, combinationRates, fullCollectionRate } = solverResult;
+  const { comboCoeffs, combinationRates, fullCollectionRate } = solverResult;
 
-  // 按组合分组，记录每张卡的最大需求
-  const cardMaxNeeds: Record<string, number> = {};
-
+  // 提取每个组合的卡
+  const cardsByCombo: Record<string, string[]> = {};
   for (const combo of setup.combinations) {
-    for (const req of combo.requirements) {
-      cardMaxNeeds[req.cardId] = Math.max(
-        cardMaxNeeds[req.cardId] || 0,
-        req.count
-      );
-    }
+    cardsByCombo[combo.name] = combo.requirements.map(r => r.cardId);
   }
 
-  // 按组合分组提取卡片
-  const firstComboCards = setup.combinations[0]?.requirements.map(r => r.cardId) || [];
-  const secondComboCards = setup.combinations[1]?.requirements.map(r => r.cardId) || [];
-
-  // 构建结果结构
+  // 构建结果
   const result: CoefficientResult = {
     byMissingCount: {
       missing3: {},
@@ -443,58 +396,45 @@ export function generateCoefficientReport(
     },
     allCoefficients: {},
     combinationRates,
-    fullCollectionRate,
+    fullCollectionRate: 0, // 简化版不算全收集
     converged: solverResult.converged,
     error: solverResult.error,
   };
 
-  // 处理第一组卡片
-  for (const card of firstComboCards) {
-    const maxNeed = cardMaxNeeds[card] || 1;
-    const coeff = coefficients[card] ?? 0.02;
+  // 为每个组合的系数生成显示
+  for (const [comboName, coeffs] of Object.entries(comboCoeffs)) {
+    const cards = cardsByCombo[comboName] || [];
 
-    // 正确逻辑：
-    // 缺N张 = 还需要N张 = 当前持有 (maxNeed - N) 张
-    // 需要2张的卡（如A）：
-    //   - 缺2张 = 持有0张，系数100%
-    //   - 缺1张 = 持有1张，系数coeff（还能以小概率获得第2张）
-    // 需要1张的卡（如B）：
-    //   - 缺1张 = 持有0张，系数100%
-    //   - 持有1张后不能再获得（但这不是"缺X张"状态）
-
-    if (maxNeed >= 3) {
-      result.byMissingCount.missing3[card] = 1.0;  // 缺3=持有0
-      result.byMissingCount.missing2[card] = coeff; // 缺2=持有1
-      result.byMissingCount.missing1[card] = coeff * coeff; // 缺1=持有2（系数二次降权）
-    } else if (maxNeed === 2) {
-      result.byMissingCount.missing2[card] = 1.0;   // 缺2=持有0
-      result.byMissingCount.missing1[card] = coeff; // 缺1=持有1（还能获得）
-    } else {
-      result.byMissingCount.missing1[card] = 1.0;   // 缺1=持有0
+    // 缺3张：所有卡都用这个系数
+    for (const card of cards) {
+      result.byMissingCount.missing3[card] = coeffs.missing3;
     }
-    result.allCoefficients[card] = coeff;
+    // 缺2张
+    for (const card of cards) {
+      result.byMissingCount.missing2[card] = coeffs.missing2;
+    }
+    // 缺1张
+    for (const card of cards) {
+      result.byMissingCount.missing1[card] = coeffs.missing1;
+    }
   }
 
-  // 处理第二组卡片
-  for (const card of secondComboCards) {
-    const maxNeed = cardMaxNeeds[card] || 1;
-    const coeff = coefficients[card] ?? 0.008;
-
-    // 如果卡片已在第一组，合并系数（取更小值二次应用）
-    const baseCoeff = result.allCoefficients[card];
-    const finalCoeff = baseCoeff !== undefined ? Math.min(baseCoeff, coeff) : coeff;
-
-    if (maxNeed >= 3) {
-      result.byMissingCount.missing3[card] = 1.0;
-      result.byMissingCount.missing2[card] = finalCoeff;
-      result.byMissingCount.missing1[card] = finalCoeff * finalCoeff;
-    } else if (maxNeed === 2) {
-      result.byMissingCount.missing2[card] = 1.0;
-      result.byMissingCount.missing1[card] = finalCoeff;
-    } else {
-      result.byMissingCount.missing1[card] = 1.0;
+  // 简化：只记录第一组的系数作为allCoefficients
+  if (setup.combinations[0]) {
+    const c1 = comboCoeffs[setup.combinations[0].name];
+    if (c1) {
+      for (const card of cardsByCombo[setup.combinations[0].name]) {
+        result.allCoefficients[card] = c1.missing2; // 主要用缺2张的系数
+      }
     }
-    result.allCoefficients[card] = finalCoeff;
+  }
+  if (setup.combinations[1]) {
+    const c2 = comboCoeffs[setup.combinations[1].name];
+    if (c2) {
+      for (const card of cardsByCombo[setup.combinations[1].name]) {
+        result.allCoefficients[card] = c2.missing2;
+      }
+    }
   }
 
   return result;
