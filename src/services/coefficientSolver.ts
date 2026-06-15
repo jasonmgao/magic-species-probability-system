@@ -40,10 +40,9 @@ function initializeCoefficients(
 ): Record<string, CardCoefficients> {
   const result: Record<string, CardCoefficients> = {};
   const coeffCount = totalSlots;
-  // 初始系数应该从很低的值开始
-  // 对于5张卡（如CCC），需要极低系数才能压到4%中奖率
-  // 第二周窗口更长（14天），需要比第一周更严格
-  const initialGuess = isWeek2 ? 0.001 : 0.02;
+  // 对于14天窗口，要把中奖率压到4%，系数必须极低
+  // 第二周：3张C在14天内，如果不狠压肯定超标
+  const initialGuess = isWeek2 ? 0.00001 : 0.02;
 
   for (const [cardId] of needs.entries()) {
     const coeffs: CardCoefficients = [1.0];
@@ -213,14 +212,11 @@ async function monteCarloSimulateAsync(
       }
       if (checkComboComplete(setup.week1, bagWeek1)) week1Success++;
 
-      // Full 2 weeks - 检查第二周的关键修正：
-      // 必须在第7天时不满足第二周，但在第14天满足
-      // 这样才能真正测试第二周的卡组控制是否有效
+      // Full 2 weeks
       const bagFull: Record<string, number> = {};
       const scheduleFull = generateSchedule();
       const w1Lucky = new Set<string>();
       const w2Lucky = new Set<string>();
-      let week2CompleteAtDay7 = false;
 
       for (let day = 1; day <= 14; day++) {
         const dayType = scheduleFull[day - 1];
@@ -230,17 +226,8 @@ async function monteCarloSimulateAsync(
           const card = drawOneCard(bagFull, setup, coefficients, day, dayType, luckyCard);
           bagFull[card] = (bagFull[card] || 0) + 1;
         }
-
-        // 第7天结束时检查第二周是否已经完成（这个阶段不应该完成）
-        if (day === 7) {
-          week2CompleteAtDay7 = checkComboComplete(setup.week2, bagFull);
-        }
       }
-
-      // 第二周成功：第7天未完成，但第14天完成了
-      if (!week2CompleteAtDay7 && checkComboComplete(setup.week2, bagFull)) {
-        week2Success++;
-      }
+      if (checkComboComplete(setup.week2, bagFull)) week2Success++;
       if (checkFullCollection(bagFull)) fullCollection++;
     }
   };
