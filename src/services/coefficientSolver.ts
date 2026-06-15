@@ -147,9 +147,8 @@ function initializeCoefficients(
       baseCoeff = isMagic ? 0.008 : (isRare ? 0.012 : 0.015);
     } else {
       // 第二周：14天窗口，必须很严格
-      // 数据：0.0005→0.8%, 0.00065→?, 0.005→30%
-      // 尝试0.001，应该接近4%
-      baseCoeff = isMagic ? 0.0008 : (isRare ? 0.001 : 0.002);
+      // 数据：0.0005→0.8%, 0.00065→0.7%  目标4%，尝试0.00075
+      baseCoeff = isMagic ? 0.0005 : (isRare ? 0.00075 : 0.001);
     }
 
     // 需要多张的卡，后续系数递减
@@ -376,10 +375,6 @@ export async function solveCoefficientsAsync(
   // 使用经验值初始化
   let week1Coeffs = initializeCoefficients(week1Needs, week1Deadline, targetRate);
   let week2Coeffs = initializeCoefficients(week2Needs, week2Deadline, targetRate);
-
-  // 调试：打印初始化后的系数
-  console.log('Week1 coeffs:', week1Coeffs);
-  console.log('Week2 coeffs:', week2Coeffs);
 
   const maxIterations = 60;
   const tolerance = 0.3;
