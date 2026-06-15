@@ -40,17 +40,18 @@ function initializeCoefficients(
 ): Record<string, CardCoefficients> {
   const result: Record<string, CardCoefficients> = {};
   const coeffCount = totalSlots;
-  // 大幅降低初始系数，特别是第二周（窗口更长，需要更严格）
-  // CCC 5张卡需要非常小的系数才能压到4%
-  const initialGuess = isWeek2 ? 0.005 : 0.02;
+  // 初始系数应该从很低的值开始
+  // 对于5张卡（如CCC），需要极低系数才能压到4%中奖率
+  // 第二周窗口更长（14天），需要比第一周更严格
+  const initialGuess = isWeek2 ? 0.001 : 0.02;
 
   for (const [cardId] of needs.entries()) {
     const coeffs: CardCoefficients = [1.0];
     for (let i = 1; i < coeffCount; i++) {
-      // 更激进的衰减
-      const decay = Math.pow(0.2, i - 1);
+      // 极端衰减
+      const decay = Math.pow(0.1, i - 1);
       const newVal = initialGuess * decay;
-      coeffs.push(Math.max(0.0001, newVal));
+      coeffs.push(Math.max(0.00001, newVal));
     }
     result[cardId] = coeffs;
   }
@@ -280,9 +281,9 @@ export async function solveCoefficientsAsync(
   let week1Coeffs = initializeCoefficients(week1Needs, week1Slots, false);
   let week2Coeffs = initializeCoefficients(week2Needs, week2Slots, true);
 
-  const maxIterations = 30;
+  const maxIterations = 50;
   const tolerance = 0.5;
-  let learningRate = 0.3;
+  let learningRate = 0.5;
   let bestError = Infinity;
   let bestCoeffs = {
     week1: JSON.parse(JSON.stringify(week1Coeffs)) as Record<string, CardCoefficients>,
@@ -291,12 +292,12 @@ export async function solveCoefficientsAsync(
   let bestRates = { week1: 0, week2: 0, fullCollection: 0 };
 
   for (let iter = 0; iter < maxIterations; iter++) {
-    // 异步模拟，每批400个场景，共8000次以提高精度
+    // 异步模拟，每批500个场景，共15000次以提高精度
     const result = await monteCarloSimulateAsync(
       setup,
       { week1: week1Coeffs, week2: week2Coeffs },
-      8000,
-      400,
+      15000,
+      500,
       (completed, total, interim) => {
         if (onProgress && iter === 0) {
           onProgress({
@@ -357,12 +358,20 @@ export async function solveCoefficientsAsync(
     // error < 0: 中奖率太低，需要提高系数
     const adjustCoefficients = (coeffs: CardCoefficients, error: number) => {
       for (let i = 1; i < coeffs.length; i++) {
-        // 比例调整：根据与目标的偏差比例来调整
-        const ratio = Math.abs(error) / targetRate;  // 偏差比例
-        const direction = error > 0 ? 0.5 : 1.5;  // 高则降，低则升
-        const adjustment = Math.pow(direction, ratio * learningRate);
-        coeffs[i] *= adjustment;
-        coeffs[i] = Math.max(0.0001, Math.min(0.3, coeffs[i]));
+        if (error > 0) {
+          // 中奖率太高，需要大幅降低系数
+          // 偏差越大，降得越狠
+          const ratio = error / targetRate;
+          const factor = Math.pow(0.3, ratio * learningRate);
+          coeffs[i] *= factor;
+        } else {
+          // 中奖率太低，适度提高系数
+          const ratio = Math.abs(error) / targetRate;
+          const factor = Math.pow(1.2, ratio * learningRate);
+          coeffs[i] *= factor;
+        }
+        // 允许系数降到很低（0.00001），上限0.5
+        coeffs[i] = Math.max(0.00001, Math.min(0.5, coeffs[i]));
       }
       // 确保单调递减
       for (let i = 1; i < coeffs.length; i++) {
