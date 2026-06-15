@@ -281,8 +281,8 @@ export async function solveCoefficientsAsync(
   let week1Coeffs = initializeCoefficients(week1Needs, week1Slots, false);
   let week2Coeffs = initializeCoefficients(week2Needs, week2Slots, true);
 
-  const maxIterations = 50;
-  const tolerance = 0.5;
+  const maxIterations = 40;
+  const tolerance = 1.0;
   let learningRate = 0.5;
   let bestError = Infinity;
   let bestCoeffs = {
@@ -353,6 +353,16 @@ export async function solveCoefficientsAsync(
       };
     }
 
+    // 极端调整：如果某个组合中奖率过高（>15%），直接把所有系数除以10
+    if (error2 > 15) {
+      // 第二周严重超标，直接暴力降权
+      for (const [, coeffs] of Object.entries(week2Coeffs)) {
+        for (let i = 1; i < coeffs.length; i++) {
+          coeffs[i] = Math.max(0.000001, coeffs[i] * 0.05);  // 直接除以20
+        }
+      }
+    }
+
     // 更新系数 - 使用比例调整（更激进）
     // error > 0: 中奖率太高，需要大幅降低系数
     // error < 0: 中奖率太低，需要提高系数
@@ -360,22 +370,21 @@ export async function solveCoefficientsAsync(
       for (let i = 1; i < coeffs.length; i++) {
         if (error > 0) {
           // 中奖率太高，需要大幅降低系数
-          // 偏差越大，降得越狠
           const ratio = error / targetRate;
-          const factor = Math.pow(0.3, ratio * learningRate);
+          const factor = Math.pow(0.05, ratio * learningRate);  // 0.05极极端
           coeffs[i] *= factor;
         } else {
           // 中奖率太低，适度提高系数
           const ratio = Math.abs(error) / targetRate;
-          const factor = Math.pow(1.2, ratio * learningRate);
+          const factor = Math.pow(1.3, ratio * learningRate);
           coeffs[i] *= factor;
         }
-        // 允许系数降到很低（0.00001），上限0.5
-        coeffs[i] = Math.max(0.00001, Math.min(0.5, coeffs[i]));
+        // 允许系数降到很低（0.000001），上限0.5
+        coeffs[i] = Math.max(0.000001, Math.min(0.5, coeffs[i]));
       }
       // 确保单调递减
       for (let i = 1; i < coeffs.length; i++) {
-        coeffs[i] = Math.min(coeffs[i], coeffs[i - 1] * 0.95);
+        coeffs[i] = Math.min(coeffs[i], coeffs[i - 1] * 0.9);
       }
     };
 
