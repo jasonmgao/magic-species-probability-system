@@ -30,10 +30,10 @@ const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
 const { TabPane } = Tabs;
 
-// 默认配置：AaB 和 CcD
+// 默认配置
 const DEFAULT_COMBINATIONS: Combination[] = [
   {
-    name: '第一套（AaB）',
+    name: '第一套',
     requirements: [
       { cardId: 'A', count: 2 },
       { cardId: 'B', count: 1 },
@@ -41,7 +41,7 @@ const DEFAULT_COMBINATIONS: Combination[] = [
     deadline: 7,
   },
   {
-    name: '第二套（CcD）',
+    name: '第二套',
     requirements: [
       { cardId: 'C', count: 2 },
       { cardId: 'D', count: 1 },
@@ -49,6 +49,20 @@ const DEFAULT_COMBINATIONS: Combination[] = [
     deadline: 14,
   },
 ];
+
+// 卡片类型说明
+const CARD_TYPES: Record<string, string> = {
+  'A': '神奇卡',
+  'B': '稀有卡',
+  'C': '稀有卡',
+  'D': '稀有卡',
+  'E': '稀有卡',
+  'F': '普通卡',
+  'G': '普通卡',
+  'H': '普通卡',
+  'I': '普通卡',
+  'J': '普通卡',
+};
 
 interface CardSelectionPageProps {
   onNavigateToConfig?: () => void;
@@ -335,47 +349,60 @@ export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps
                   key="coefficients"
                 >
                   <Paragraph type="secondary" style={{ marginBottom: 16 }}>
-                    基于目标中奖率 4%，通过二分搜索求解得到的最优降权系数
+                    基于目标中奖率 4%，通过网格搜索求解得到的最优降权系数
                   </Paragraph>
 
-                  {/* 缺3张时的系数 */}
-                  {Object.keys(result.byMissingCount.missing3).length > 0 && (
-                    <div style={{ marginBottom: 16 }}>
-                      <Text strong style={{ color: '#52c41a' }}>缺3张时（持有0张）系数：</Text>
+                  {/* 卡片类型说明 */}
+                  <Alert
+                    message="🃏 卡片类型说明"
+                    description={
+                      <div>
+                        <Tag color="purple">A</Tag> = 神奇卡（1张）&nbsp;&nbsp;
+                        <Tag color="blue">B,C,D,E</Tag> = 稀有卡（4张）&nbsp;&nbsp;
+                        <Tag>F,G,H,I,J</Tag> = 普通卡（5张）
+                      </div>
+                    }
+                    type="info"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                  />
+
+                  {/* 第一套系数 */}
+                  {combinations[0] && (
+                    <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#f6ffed', borderRadius: 8 }}>
+                      <Text strong style={{ color: '#52c41a' }}>
+                        第一套降权系数：
+                        {combinations[0].requirements.map(r => `${r.cardId}×${r.count}`).join(' + ')}
+                      </Text>
                       <div style={{ marginTop: 8 }}>
-                        {Object.entries(result.byMissingCount.missing3).map(([card, coeff]) => (
-                          <Tag key={card} color="green" style={{ margin: '2px' }}>
-                            {card}: {(coeff * 100).toFixed(0)}%
-                          </Tag>
-                        ))}
+                        {combinations[0].requirements.map(r => r.cardId).map(card => {
+                          const coeff = result.allCoefficients[card] || 0.02;
+                          return (
+                            <Tag key={card} color="green" style={{ margin: '2px' }}>
+                              {card}({CARD_TYPES[card]}): {(coeff * 100).toFixed(2)}%
+                            </Tag>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
 
-                  {/* 缺2张时的系数 */}
-                  {Object.keys(result.byMissingCount.missing2).length > 0 && (
-                    <div style={{ marginBottom: 16 }}>
-                      <Text strong style={{ color: '#faad14' }}>缺2张时（持有1张）系数：</Text>
+                  {/* 第二套系数 */}
+                  {combinations[1] && (
+                    <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#e6f7ff', borderRadius: 8 }}>
+                      <Text strong style={{ color: '#1890ff' }}>
+                        第二套降权系数：
+                        {combinations[1].requirements.map(r => `${r.cardId}×${r.count}`).join(' + ')}
+                      </Text>
                       <div style={{ marginTop: 8 }}>
-                        {Object.entries(result.byMissingCount.missing2).map(([card, coeff]) => (
-                          <Tag key={card} color="orange" style={{ margin: '2px' }}>
-                            {card}: {(coeff * 100).toFixed(4)}%
-                          </Tag>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 缺1张时的系数 */}
-                  {Object.keys(result.byMissingCount.missing1).length > 0 && (
-                    <div style={{ marginBottom: 16 }}>
-                      <Text strong style={{ color: '#ff4d4f' }}>缺1张时（持有2张）系数：</Text>
-                      <div style={{ marginTop: 8 }}>
-                        {Object.entries(result.byMissingCount.missing1).map(([card, coeff]) => (
-                          <Tag key={card} color="red" style={{ margin: '2px' }}>
-                            {card}: {(coeff * 100).toFixed(2)}%
-                          </Tag>
-                        ))}
+                        {combinations[1].requirements.map(r => r.cardId).map(card => {
+                          const coeff = result.allCoefficients[card] || 0.008;
+                          return (
+                            <Tag key={card} color="blue" style={{ margin: '2px' }}>
+                              {card}({CARD_TYPES[card]}): {(coeff * 100).toFixed(3)}%
+                            </Tag>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -383,12 +410,19 @@ export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps
                   <Divider />
 
                   <Alert
-                    message="系数解释"
-                    description={`
-                      • 缺3张（持有0张）：系数 100%，使用基础概率抽卡
-                      • 缺2张（持有1张）：系数约 ${((result.byMissingCount.missing2[Object.keys(result.byMissingCount.missing2)[0]] || 0.02) * 10000).toFixed(2)}‱，大幅降低该卡概率
-                      • 缺1张（持有2张）：系数 0%，完全禁止获得该卡
-                    `}
+                    message="📖 系数解释"
+                    description={
+                      <div>
+                        <p><strong>缺3张：</strong>组合中一张卡都没有（如 A=0,B=0），抽卡概率 × 100%（正常概率）</p>
+                        <p><strong>缺2张：</strong>组合中已持有1张（如 A=1,B=0 或 A=0,B=1），抽卡概率 × 系数</p>
+                        <p><strong>缺1张：</strong>组合中已持有2张（如 A=2,B=0 或 A=1,B=1），抽卡概率 × 系数</p>
+                        <p style={{ marginTop: 8, color: '#666' }}>
+                          💡 <strong>举例：</strong>第一套是 A×2 + B×1<br/>
+                          • 背包只有A时：缺2张（还需要1A+1B），应用缺2张系数<br/>
+                          • 背包有A+B时：缺1张（还需要1A），应用缺1张系数
+                        </p>
+                      </div>
+                    }
                     type="info"
                     showIcon
                   />
