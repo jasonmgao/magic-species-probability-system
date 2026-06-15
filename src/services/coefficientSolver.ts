@@ -57,28 +57,38 @@ function countCardNeeds(cards: string[]): Map<string, number> {
  * - 第 1 张固定 = 1.0（索引 0）
  * - 第 2 张到第 n 张（索引 1 到 n-1）= 初始猜测值
  *
+ * 重要：系数数量 = 卡组卡槽总数（2-5），不是单张卡的需求量
+ * 例如卡组 ["A","A","B"]（3个卡槽），每张卡都有 [1.0, x, y]（3个系数）
+ *
  * @param needs 卡牌需求量 Map
+ * @param totalSlots 卡组总卡槽数（2-5）
  * @param isWeek2 是否是第二周（第二周通常系数更小）
  */
 function initializeCoefficients(
   needs: Map<string, number>,
+  totalSlots: number,
   isWeek2: boolean
 ): Record<string, CardCoefficients> {
   const result: Record<string, CardCoefficients> = {};
 
-  for (const [cardId, needed] of needs.entries()) {
+  // 系数数量 = 卡槽总数（2-5）
+  // 例如 3 张卡组 → 系数 [1.0, x, y]（索引 0, 1, 2 对应持有 1, 2, 3 张）
+  const coeffCount = totalSlots;
+
+  for (const [cardId] of needs.entries()) {
     const coeffs: CardCoefficients = [1.0];  // 持有 1 张固定=1.0（不降权）
 
-    // 持有 2 张到持有 n 张的系数（待求解）
-    // 第二周窗口更长，系数应该更小（防止过早完成）
-    const initialGuess = isWeek2 ? 0.03 : 0.08;
+    // 初始猜测值（第二周通常系数更小，因为窗口更长）
+    const initialGuess = isWeek2 ? 0.05 : 0.15;
 
-    for (let i = 1; i < needed; i++) {
-      // 每张卡的需求量决定了系数数量
-      // 例如：需要 3 张 → 系数 [1.0, c2, c3]（持有 1/2/3 张时的系数）
-      // 持有 4 张以上概率=0
-      const decay = Math.pow(0.5, i - 1);  // 指数衰减
-      coeffs.push(initialGuess * decay);
+    // 生成剩余系数（索引 1 到 coeffCount-1）
+    for (let i = 1; i < coeffCount; i++) {
+      // 指数衰减：越往后系数越小
+      const decay = Math.pow(0.4, i - 1);
+      // 确保递减
+      const prevVal = coeffs[i - 1];
+      const newVal = Math.min(initialGuess * decay, prevVal * 0.8);
+      coeffs.push(Math.max(0.001, newVal));
     }
 
     result[cardId] = coeffs;
@@ -401,13 +411,15 @@ export function solveCoefficients(
   trialsPerIteration: number = 30000,
   onProgress?: (progress: SolverProgress) => void
 ): SolverResult {
-  // 1. 统计两周的卡牌需求
+  // 1. 统计两周的卡牌需求和卡槽数
   const week1Needs = countCardNeeds(setup.week1.cards);
   const week2Needs = countCardNeeds(setup.week2.cards);
+  const week1Slots = setup.week1.cards.length;  // 第一周卡槽数（2-5）
+  const week2Slots = setup.week2.cards.length;  // 第二周卡槽数（2-5）
 
-  // 2. 初始化降权系数
-  let week1Coeffs = initializeCoefficients(week1Needs, false);
-  let week2Coeffs = initializeCoefficients(week2Needs, true);
+  // 2. 初始化降权系数（按卡槽总数）
+  let week1Coeffs = initializeCoefficients(week1Needs, week1Slots, false);
+  let week2Coeffs = initializeCoefficients(week2Needs, week2Slots, true);
 
   // 3. 梯度下降迭代
   let learningRate = 0.2;
