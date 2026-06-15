@@ -104,30 +104,19 @@ function getCoeffForMissing(coeffs: ComboCoefficients, missing: number): number 
 const COEFF_RANGES = [0.005, 0.008, 0.01, 0.015, 0.02, 0.03, 0.05, 0.08, 0.12, 0.15];
 
 /**
- * 生成所有系数组合
+ * 从基础系数生成完整系数表
  * 原则：缺卡越少，系数越严格（越小）
- * 例如3张卡：缺3=100%，缺2=10%，缺1=2%
  */
-function* generateCoeffCombos(totalNeed: number): Generator<ComboCoefficients> {
-  const variableLevels = totalNeed - 1;
+function generateCoeffFromBase(totalNeed: number, baseCoeff: number): ComboCoefficients {
+  const coeffs: ComboCoefficients = {};
+  coeffs[`missing${totalNeed}`] = 1.0; // 缺最多时100%
 
-  if (variableLevels <= 0) {
-    yield { [`missing${totalNeed}`]: 1.0 };
-    return;
+  // 缺卡越少，系数越小（更严格）
+  for (let i = totalNeed - 1; i >= 1; i--) {
+    const level = totalNeed - i;
+    coeffs[`missing${i}`] = baseCoeff * Math.pow(0.4, level - 1);
   }
-
-  for (const baseCoeff of COEFF_RANGES) {
-    const coeffs: ComboCoefficients = {};
-    coeffs[`missing${totalNeed}`] = 1.0; // 缺最多时100%
-
-    // 缺卡越少，系数越小（更严格）
-    for (let i = totalNeed - 1; i >= 1; i--) {
-      // 指数递减：缺卡越少，系数越接近于0
-      const level = totalNeed - i; // 1, 2, ...
-      coeffs[`missing${i}`] = baseCoeff * Math.pow(0.4, level - 1);
-    }
-    yield coeffs;
-  }
+  return coeffs;
 }
 
 /**
@@ -150,9 +139,14 @@ export function solveCoefficients(
   let bestResult: SolverResult | null = null;
   let minError = Infinity;
 
-  // 网格搜索：每套独立选择系数
-  for (const coeffs1 of generateCoeffCombos(totalNeed1)) {
-    for (const coeffs2 of generateCoeffCombos(totalNeed2)) {
+  // 网格搜索：两套独立选择系数
+  // 第一套（7天）：使用较宽松系数 0.5%-15%
+  // 第二套（14天）：使用更严格系数 0.05%-3%
+  for (const base1 of [0.005, 0.008, 0.01, 0.015, 0.02, 0.03, 0.05, 0.08, 0.12, 0.15]) {
+    const coeffs1 = generateCoeffFromBase(totalNeed1, base1);
+    for (const base2 of [0.0005, 0.001, 0.002, 0.003, 0.005, 0.008, 0.01, 0.015, 0.02, 0.03]) {
+      const coeffs2 = generateCoeffFromBase(totalNeed2, base2);
+
       const rates = runFastSim(combo1, combo2, coeffs1, coeffs2, trials);
       const error = Math.abs(rates[0] - targetRate) + Math.abs(rates[1] - targetRate);
 
@@ -166,9 +160,9 @@ export function solveCoefficients(
           error,
         };
       }
-      if (minError < 0.3) break;
+      if (minError < 0.2) break;
     }
-    if (minError < 0.3) break;
+    if (minError < 0.2) break;
   }
 
   // 计算全收集率
