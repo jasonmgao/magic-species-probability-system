@@ -285,14 +285,14 @@ function calculateFullCollectionRate(
       // 复制一份用于应用降权
       const p_s = { ...p_raw };
 
-      // 应用降权系数（已有卡则概率降低，但不禁止多次获得）
+      // 应用降权系数：只对组合卡生效，填充卡不应用降权
       for (const card of combo1Cards) {
         if (bag[card] >= 1) p_s[card] *= coeffs1.coeff;
       }
       for (const card of combo2Cards) {
         if (bag[card] >= 1) p_s[card] *= coeffs2.coeff;
       }
-      // 填充卡E-J：可以无限获得，只应用降权但不禁止
+      // 填充卡E-J：不应用任何降权，可以无限获得
 
       // 转换为日概率（应用降权后的）
       const w: Record<string, number> = {};
