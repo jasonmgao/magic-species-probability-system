@@ -93,13 +93,13 @@ function calculateMissingCount(combo: Combination, bag: Record<string, number>):
 }
 
 /**
- * 求解降权系数 - 简化版
- * 只搜2个参数：第一组系数和第二组系数
+ * 求解降权系数 - 极速版
+ * 只搜2个参数，大幅减少计算量
  */
 export function solveCoefficients(
   setup: CardSetup,
   targetRate: number = 4.0,
-  trials: number = 1000
+  trials: number = 200  // 降低试验次数
 ): SolverResult {
 
   if (setup.combinations.length < 2) {
@@ -114,16 +114,18 @@ export function solveCoefficients(
   const combo1 = setup.combinations[0];
   const combo2 = setup.combinations[1];
 
-  // 只搜2个参数，范围更合理
-  const rangeW1 = [0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.04, 0.05, 0.06, 0.08, 0.10, 0.12, 0.15, 0.20, 0.30];
-  const rangeW2 = [0.003, 0.005, 0.008, 0.01, 0.012, 0.015, 0.02, 0.025, 0.03, 0.04, 0.05, 0.08, 0.10];
+  // 粗搜索：更少参数
+  const rangeW1 = [0.01, 0.02, 0.03, 0.05, 0.08, 0.12, 0.20];
+  const rangeW2 = [0.005, 0.01, 0.015, 0.02, 0.03, 0.05, 0.08];
 
   let bestResult: SolverResult | null = null;
   let minError = Infinity;
+  let bestW1 = 0.03, bestW2 = 0.015;
 
+  // 第一阶段：粗搜索
   for (const coeff1 of rangeW1) {
     for (const coeff2 of rangeW2) {
-      const rates = runWeightedSim(
+      const rates = runFastSim(
         combo1, combo2,
         { coeff: coeff1 },
         { coeff: coeff2 },
@@ -134,6 +136,8 @@ export function solveCoefficients(
 
       if (error < minError) {
         minError = error;
+        bestW1 = coeff1;
+        bestW2 = coeff2;
         bestResult = {
           comboCoeffs: {
             [combo1.name]: { coeff: coeff1 },
@@ -147,10 +151,42 @@ export function solveCoefficients(
           error,
         };
       }
-
-      if (error < 0.3) break;
     }
-    if (minError < 0.3) break;
+  }
+
+  // 第二阶段：细搜索（最佳值附近）
+  const fineW1 = [bestW1 * 0.8, bestW1 * 0.9, bestW1, bestW1 * 1.1, bestW1 * 1.2].filter(x => x <= 0.30);
+  const fineW2 = [bestW2 * 0.8, bestW2 * 0.9, bestW2, bestW2 * 1.1, bestW2 * 1.2].filter(x => x <= 0.15);
+
+  for (const coeff1 of fineW1) {
+    for (const coeff2 of fineW2) {
+      const rates = runFastSim(
+        combo1, combo2,
+        { coeff: coeff1 },
+        { coeff: coeff2 },
+        trials * 2  // 细搜用更多试验
+      );
+
+      const error = Math.abs(rates[0] - targetRate) + Math.abs(rates[1] - targetRate);
+
+      if (error < minError) {
+        minError = error;
+        bestW1 = coeff1;
+        bestW2 = coeff2;
+        bestResult = {
+          comboCoeffs: {
+            [combo1.name]: { coeff: coeff1 },
+            [combo2.name]: { coeff: coeff2 },
+          },
+          combinationRates: {
+            [combo1.name]: rates[0],
+            [combo2.name]: rates[1],
+          },
+          converged: error < 0.5,
+          error,
+        };
+      }
+    }
   }
 
   return bestResult || {
@@ -164,7 +200,15 @@ export function solveCoefficients(
   };
 }
 
-function runWeightedSim(
+// 简化的加权模拟：只跑概率最高的4种组合，减少计算量
+const FAST_COMBO_DIST: Array<[string, string, number]> = [
+  ['common', 'common', 0.22],
+  ['common', 'rare', 0.22],
+  ['rare', 'common', 0.22],
+  ['rare', 'rare', 0.13],
+];
+
+function runFastSim(
   combo1: Combination,
   combo2: Combination,
   coeffs1: ComboCoefficients,
@@ -174,7 +218,7 @@ function runWeightedSim(
   let w1Sum = 0, w2Sum = 0;
   let totalWeight = 0;
 
-  for (const [aType, cType, weight] of COMBO_DIST) {
+  for (const [aType, cType, weight] of FAST_COMBO_DIST) {
     const [r1, r2] = runSim(combo1, combo2, coeffs1, coeffs2, aType as any, cType as any, trials);
     w1Sum += r1 * weight;
     w2Sum += r2 * weight;
