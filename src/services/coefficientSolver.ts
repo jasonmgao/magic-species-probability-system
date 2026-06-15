@@ -146,9 +146,9 @@ function initializeCoefficients(
       // 第一周：7天窗口，相对宽松
       baseCoeff = isMagic ? 0.008 : (isRare ? 0.012 : 0.015);
     } else {
-      // 第二周：14天窗口
-      // 0.0005→0.7%，需要向上调到4%
-      baseCoeff = isMagic ? 0.0004 : (isRare ? 0.0005 : 0.001);
+      // 疯狂下降：0.00005（五万分之一）
+      // 第二周一上来20%实在太高，必须狠压
+      baseCoeff = isMagic ? 0.00003 : (isRare ? 0.00005 : 0.001);
     }
 
     // 需要多张的卡，后续系数递减
@@ -463,25 +463,23 @@ export async function solveCoefficientsAsync(
       }
     }
 
-    const adjustCoefficients = (coeffs: CardCoefficients, error: number, isWeek2Flag: boolean) => {
+    const adjustCoefficients = (coeffs: CardCoefficients, error: number, _isWeek2Flag: boolean) => {
       for (let i = 1; i < coeffs.length; i++) {
         if (error > 0) {
-          // 中奖率太高（如30% vs 4%），大幅降低系数
+          // 中奖率太高（如20% vs 4%），需要激进下降！
+          // ratio = 16/4 = 4，需要大幅下降
           const ratio = error / targetRate;
-          const factor = Math.pow(0.2, ratio * learningRate * 0.5);
+          // 0.05^4 = 0.000006，但限制在0.2作为最小factor
+          const factor = Math.max(0.2, Math.pow(0.05, ratio * learningRate));
           coeffs[i] *= factor;
         } else {
-          // 中奖率太低（如0.7% vs 4%），需要大幅提高系数！
-          const ratio = Math.abs(error) / targetRate;  // 如 3.3/4 = 0.825
-          // 激进提升：1.5^0.825 ≈ 1.4，即40%提升
-          const factor = Math.min(2.5, Math.pow(1.5, ratio * learningRate));
+          // 中奖率太低，适度提升
+          const ratio = Math.abs(error) / targetRate;
+          const factor = Math.min(2.0, Math.pow(1.4, ratio * learningRate));
           coeffs[i] *= factor;
-          // 第二周从0.7%起步时，前几轮可以更激进
-          if (isWeek2Flag && ratio > 0.5) {
-            coeffs[i] *= 1.3; // 额外30%提升
-          }
         }
-        coeffs[i] = Math.max(0.00001, Math.min(0.3, coeffs[i]));
+        // 确保系数不会降到太低或太高
+        coeffs[i] = Math.max(0.00001, Math.min(0.1, coeffs[i]));
       }
       for (let i = 1; i < coeffs.length; i++) {
         coeffs[i] = Math.min(coeffs[i], coeffs[i - 1] * 0.9);
