@@ -127,30 +127,32 @@ function calculateInitialCoefficient(
  */
 function initializeCoefficients(
   needs: Map<string, number>,
-  totalSlots: number,  // <-- 关键：用卡槽总数，不是需求量！
   deadline: number,
   _targetRate: number
 ): Record<string, CardCoefficients> {
   const result: Record<string, CardCoefficients> = {};
 
-  for (const [cardId] of needs.entries()) {
+  for (const [cardId, needCount] of needs.entries()) {
     const coeffs: CardCoefficients = [1.0];
 
     // 根据天数和卡的稀有度设置经验值
+    // 7天窗口： coeff[1] ≈ 0.01
+    // 14天窗口：coeff[1] ≈ 0.0006 (根据0.0005→0.8%, 希望到4%稍微提高)
     const isRare = ['B', 'C', 'D', 'E'].includes(cardId);
     const isMagic = cardId === 'A';
 
     let baseCoeff: number;
     if (deadline <= 7) {
+      // 第一周：7天窗口，相对宽松
       baseCoeff = isMagic ? 0.008 : (isRare ? 0.012 : 0.015);
     } else {
-      // 第二周：14天窗口
+      // 第二周：14天窗口，必须很严格
+      // 测试数据：0.0005 → 0.8%, 要 → 4%，尝试 0.00065
       baseCoeff = isMagic ? 0.0004 : (isRare ? 0.00065 : 0.001);
     }
 
-    // 🔥 关键修复：生成 totalSlots 个系数，不是 needCount 个！
-    // 这样持有 any 数量都可以正确查表
-    for (let i = 1; i < totalSlots; i++) {
+    // 需要多张的卡，后续系数递减
+    for (let i = 1; i < needCount; i++) {
       const decay = Math.pow(0.4, i - 1);
       coeffs.push(Math.max(0.00001, baseCoeff * decay));
     }
@@ -370,13 +372,13 @@ export async function solveCoefficientsAsync(
   const week1Deadline = setup.week1.deadline;
   const week2Deadline = setup.week2.deadline;
 
-  // 使用经验值初始化 - 传入卡槽总数！
-  let week1Coeffs = initializeCoefficients(week1Needs, week1Slots, week1Deadline, targetRate);
-  let week2Coeffs = initializeCoefficients(week2Needs, week2Slots, week2Deadline, targetRate);
+  // 使用经验值初始化
+  let week1Coeffs = initializeCoefficients(week1Needs, week1Deadline, targetRate);
+  let week2Coeffs = initializeCoefficients(week2Needs, week2Deadline, targetRate);
 
-  const maxIterations = 15;
-  const tolerance = 1.0;
-  let learningRate = 0.3;
+  const maxIterations = 60;
+  const tolerance = 0.3;
+  let learningRate = 0.8;
   let bestError = Infinity;
   let bestCoeffs = {
     week1: JSON.parse(JSON.stringify(week1Coeffs)) as Record<string, CardCoefficients>,
@@ -384,9 +386,7 @@ export async function solveCoefficientsAsync(
   };
   let bestRates = { week1: 0, week2: 0, fullCollection: 0 };
 
-  // 测试：第一轮模拟后，如果第二周>20%，强制降低系数，否则保持
-  // 跳过复杂的调整算法
-  for (let iter = 0; iter < 3; iter++) {
+  for (let iter = 0; iter < maxIterations; iter++) {
     const result = await monteCarloSimulateAsync(
       setup,
       { week1: week1Coeffs, week2: week2Coeffs },
@@ -465,23 +465,18 @@ export async function solveCoefficientsAsync(
     const adjustCoefficients = (coeffs: CardCoefficients, error: number) => {
       for (let i = 1; i < coeffs.length; i++) {
         if (error > 0) {
-          // 中奖率太高，降低系数
           const ratio = error / targetRate;
-          // 限制单次调整幅度，避免调整过度
-          const factor = Math.max(0.7, Math.pow(0.1, ratio * learningRate * 0.3));
+          const factor = Math.pow(0.1, ratio * learningRate);
           coeffs[i] *= factor;
         } else {
-          // 中奖率太低，提高系数，但保守一些
           const ratio = Math.abs(error) / targetRate;
-          const factor = Math.min(1.3, Math.pow(1.2, ratio * learningRate * 0.2));
+          const factor = Math.pow(1.2, ratio * learningRate);
           coeffs[i] *= factor;
         }
-        // 更严格的上下限
-        coeffs[i] = Math.max(0.00005, Math.min(0.1, coeffs[i]));
+        coeffs[i] = Math.max(0.000001, Math.min(0.5, coeffs[i]));
       }
-      // 确保单调递减
       for (let i = 1; i < coeffs.length; i++) {
-        coeffs[i] = Math.min(coeffs[i], coeffs[i - 1] * 0.98);
+        coeffs[i] = Math.min(coeffs[i], coeffs[i - 1] * 0.95);
       }
     };
 
