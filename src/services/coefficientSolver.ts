@@ -292,13 +292,7 @@ function calculateFullCollectionRate(
       for (const card of combo2Cards) {
         if (bag[card] >= 1) p_s[card] *= coeffs2.coeff;
       }
-      // 填充卡只许1张
-      for (const card of OTHER_CARDS) {
-        if (bag[card] >= 1) {
-          p_raw[card] = 0;
-          p_s[card] = 0;
-        }
-      }
+      // 填充卡E-J：可以无限获得，只应用降权但不禁止
 
       // 转换为日概率（应用降权后的）
       const w: Record<string, number> = {};
