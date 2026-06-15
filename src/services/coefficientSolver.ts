@@ -131,13 +131,21 @@ function drawOneCard(
     }
   }
 
+  // 归一化 - 关键步骤！
   const total = Object.values(weightedProbs).reduce((a, b) => a + b, 0);
   if (total <= 0) return 'A';
 
-  const r = Math.random() * total;
+  // 将概率归一化到总和为100%
+  const normalizedProbs: Record<string, number> = {};
+  for (const card of ALL_CARDS) {
+    normalizedProbs[card] = (weightedProbs[card] / total) * 100;
+  }
+
+  // 轮盘赌
+  const r = Math.random() * 100;
   let sum = 0;
-  for (const [card, prob] of Object.entries(weightedProbs)) {
-    sum += prob;
+  for (const card of ALL_CARDS) {
+    sum += normalizedProbs[card];
     if (r < sum) return card;
   }
   return 'A';
