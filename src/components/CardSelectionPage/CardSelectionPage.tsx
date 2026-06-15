@@ -367,45 +367,51 @@ export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps
                     style={{ marginBottom: 16 }}
                   />
 
-                  {/* 第一套系数 */}
-                  {combinations[0] && (
-                    <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#f6ffed', borderRadius: 8 }}>
-                      <Text strong style={{ color: '#52c41a' }}>
-                        第一套降权系数：
-                        {combinations[0].requirements.map(r => `${r.cardId}×${r.count}`).join(' + ')}
-                      </Text>
-                      <div style={{ marginTop: 8 }}>
-                        {combinations[0].requirements.map(r => r.cardId).map(card => {
-                          const coeff = result.allCoefficients[card] || 0.02;
-                          return (
-                            <Tag key={card} color="green" style={{ margin: '2px' }}>
-                              {card}({CARD_TYPES[card]}): {(coeff * 100).toFixed(2)}%
-                            </Tag>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+                  {/* 按卡片分组显示系数 */}
+                  {(() => {
+                    // 收集每张卡在哪几周出现
+                    const cardWeeks: Record<string, { week: number, count: number }[]> = {};
+                    combinations.forEach((combo, weekIdx) => {
+                      combo.requirements.forEach(req => {
+                        if (!cardWeeks[req.cardId]) {
+                          cardWeeks[req.cardId] = [];
+                        }
+                        cardWeeks[req.cardId].push({ week: weekIdx + 1, count: req.count });
+                      });
+                    });
 
-                  {/* 第二套系数 */}
-                  {combinations[1] && (
-                    <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#e6f7ff', borderRadius: 8 }}>
-                      <Text strong style={{ color: '#1890ff' }}>
-                        第二套降权系数：
-                        {combinations[1].requirements.map(r => `${r.cardId}×${r.count}`).join(' + ')}
-                      </Text>
-                      <div style={{ marginTop: 8 }}>
-                        {combinations[1].requirements.map(r => r.cardId).map(card => {
-                          const coeff = result.allCoefficients[card] || 0.008;
-                          return (
-                            <Tag key={card} color="blue" style={{ margin: '2px' }}>
-                              {card}({CARD_TYPES[card]}): {(coeff * 100).toFixed(3)}%
-                            </Tag>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+                    return Object.entries(cardWeeks).map(([card, weeks]) => {
+                      const isMultiWeek = weeks.length > 1;
+                      return (
+                        <div
+                          key={card}
+                          style={{
+                            marginBottom: 16,
+                            padding: 12,
+                            backgroundColor: isMultiWeek ? '#fff2e8' : (weeks[0].week === 1 ? '#f6ffed' : '#e6f7ff'),
+                            borderRadius: 8,
+                            border: isMultiWeek ? '2px solid #ff7a45' : 'none'
+                          }}
+                        >
+                          <Text strong style={{ color: isMultiWeek ? '#ff7a45' : (weeks[0].week === 1 ? '#52c41a' : '#1890ff') }}>
+                            {card} ({CARD_TYPES[card]}) {isMultiWeek && '⚠️ 两周都出现'}
+                          </Text>
+                          <div style={{ marginTop: 8 }}>
+                            {weeks.map(({ week, count }) => {
+                              const coeff = result.allCoefficients[card] || 0.02;
+                              return (
+                                <div key={week} style={{ marginBottom: 4 }}>
+                                  <Tag color={week === 1 ? 'green' : 'blue'}>
+                                    第{week}周 (需求{count}张): 降权系数 {(coeff * 100).toFixed(2)}%
+                                  </Tag>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
 
                   <Divider />
 
