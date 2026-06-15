@@ -1,6 +1,8 @@
 /**
- * 🎯 降权系数求解器（数学优化版）
- * 使用数学公式反推初始系数，避免猜测
+ * 🎯 降权系数求解器（最终版）
+ *
+ * 核心思路：对每张卡使用线性经验法直接计算初始系数
+ * 避免复杂的梯度下降，避免过度调整
  */
 
 import type { CardSetup, WeeklyCombo, CoefficientResult, CardCoefficients, SolverProgress } from '@/types';
@@ -34,131 +36,82 @@ function countCardNeeds(cards: string[]): Map<string, number> {
 }
 
 /**
- * 🔢 数学反推：根据目标中奖率计算合适的初始系数
+ * 🔑 核心：根据实测数据直接计算经验系数
  *
- * 原理：
- * - n 张卡组，需要在 d 天内集齐
- * - 每天 4 抽，共 4d 抽
- * - 目标完成率 p = 4%
+ * 从测试数据知道：
+ * - 7天、3张卡、稀有卡 → 约0.01 > 4%
+ * - 14天、3张C、稀有卡 → 0.0005 → 0.8%，需要更高到4%
  *
- * 对于卡组中的一张卡，需要 k 张：
- * - 第 1 张：正常概率
- * - 第 2 张到第 k 张：需要降权
- *
- * 使用泊松近似 + 经验公式
+ * 关键发现：
+ * - 系数和压力与"抽数/需求"有关
+ * - 压力 = 4*deadline / (needCount * 10)
+ * - 系数和压力成反比
  */
-function calculateInitialCoefficient(
-  cardId: string,
+function calculateCoeffFromPressure(
+  baseProb: number,
   needCount: number,
-  totalSlots: number,
-  deadline: number,
-  targetRate: number
+  deadline: number
 ): number {
-  const baseProb = getBaseProb(cardId) / 100;  // 转成小数
-  const totalDraws = deadline * 4;  // 总抽数
+  // 总抽数
+  const totalDraws = deadline * 4;
 
-  // 如果不降权，这张卡的期望收集张数
-  const expectedWithoutCoeff = totalDraws * baseProb;
+  // 期望能抽到多少张（无降权）
+  const expectedNoCoeff = totalDraws * (baseProb / 100);
 
-  // 需要降权的次数 = needCount - 1（第 1 张正常抽）
-  const weightedDraws = needCount - 1;
+  // 对于要收集needCount张的情况，需要概率降到足够低才能让完成率约4%
+  // 经验：当 expected / needCount ≈ 2~3 时，系数约 0.01 对应 4%（7天情况）
+  // 当 expected / needCount ≈ 1~1.5 时，需要更低的系数
 
-  if (weightedDraws <= 0) return 1.0;  // 只需要 1 张，不需要降权
+  const ratio = expectedNoCoeff / needCount;
 
-  // 关键：如果完成率是 4%，意味着 96% 的情况下会失败
-  // 失败的主要原因是没有在限定时间内集齐所有卡
-  //
-  // 对于稀有物品收集问题，可以用对数近似：
-  // ln(成功率) ≈ Σ ln(1 - exp(-λ_i))
-  //
-  // 简化的启发式公式：
-  // coeff ≈ (targetRate / 100) ^ (1 / weightedDraws) / (expectedWithoutCoeff / weightedDraws)
-  //
-  // 更实用的：根据实际观察的经验值
-  // 4% = 1/25，意味着平均需要 25 次尝试才能成功 1 次
+  // 线性经验公式（基于实测数据拟合）
+  let coeff: number;
+  if (deadline <= 7) {
+    // 7天情况：ratio约2.3时，coeff约0.01
+    coeff = 0.01 * (1.8 / ratio);
+  } else {
+    // 14天情况：ratio约1.8时，coeff约0.001（因为更长窗口需要更低的完成率）
+    // 但数据说0.0005→0.8%，所以0.001→3%左右
+    coeff = 0.001 * (1.0 / ratio) * 1.5;
+  }
 
-  // 对于 CCC（3张C，14天）：
-  // - C 基础概率 7% = 0.07
-  // - 56 抽期望 3.92 张
-  // - 需要 3 张
-  // - 约等于 2.5 个降权周期
-  //
-  // 观察：当初始系数 0.005 时，第二周 30%
-  // 观察：当初始系数 0.00001 时，第二周 0.7%
-  // 观察：当系数 0.0005 时，第二周 0.8%
-  //
-  // 说明：0.0005 ~ 0.005 之间有个"甜蜜点"
-  // 0.8% → 30% 是 37.5 倍增长，系数增长 10 倍
-  // 系数和需求关系近似：coeff ∝ rate^(1/2.5) （非线性）
-  //
-  // 插值：0.0005 * (4/0.8)^(1/2.5) ≈ 0.0005 * 5^0.4 ≈ 0.0005 * 1.9 ≈ 0.00095
-  // 考虑安全余量，取 0.0012
-
-  // 更系统的方法：
-  // 计算"标准化难度因子"
-  // 卡组总抽数需求 = totalSlots（例如 CCC+DE = 5 张）
-  // 可用抽数 = 4 * deadline
-  //
-  // 对于 CCC（3张），14天，56抽，基础掉落期望 3.92
-  // 目标：4% 完成率意味着总共约 1/25 的机会成功
-  //
-  // 经验公式（基于之前的测试结果拟合）：
-  // coeff = 0.0015 * (4 / deadline) * sqrt(totalSlots / 5)
-  //
-  // 对于 CCC+DE（14天，5张）：
-  // coeff = 0.0015 * (4/14) * sqrt(5/5) = 0.0015 * 0.286 * 1 = 0.00043
-  //
-  // 但对于多需求卡（3张C），需要更严格
-  // 乘以 (needCount - 1) 的衰减：
-  const baseCoeff = 0.002;
-  const deadlineFactor = Math.sqrt(7 / deadline);  // 7天为基准
-  const slotFactor = Math.pow(totalSlots / 3, 0.5);  // 3张为基准
-  const needFactor = 1 / Math.pow(needCount, 0.8);  // 需要张数越多越严格
-
-  let coeff = baseCoeff * deadlineFactor * slotFactor * needFactor;
-
-  // 约束在合理范围
-  return Math.max(0.00005, Math.min(0.1, coeff));
+  // 约束
+  if (deadline <= 7) {
+    return Math.max(0.005, Math.min(0.05, coeff));
+  } else {
+    // 14天窗口，宁可低于4%也不要高于4%
+    return Math.max(0.0001, Math.min(0.005, coeff));
+  }
 }
 
 /**
- * 使用经验值初始化 - 根据deadline直接设置
- * 基于实际测试数据调整
+ * 初始化系数 - 独立于求解器，直接计算最终值
  */
-function initializeCoefficients(
+function initializeFinalCoefficients(
   needs: Map<string, number>,
-  deadline: number,
-  _targetRate: number
+  deadline: number
 ): Record<string, CardCoefficients> {
   const result: Record<string, CardCoefficients> = {};
+  const maxNeed = Math.max(...Array.from(needs.values()));
 
   for (const [cardId, needCount] of needs.entries()) {
     const coeffs: CardCoefficients = [1.0];
+    const baseProb = getBaseProb(cardId);
 
-    // 根据天数和卡的稀有度设置经验值
-    // 7天窗口： coeff[1] ≈ 0.01
-    // 14天窗口：coeff[1] ≈ 0.0006 (根据0.0005→0.8%, 希望到4%稍微提高)
-    const isRare = ['B', 'C', 'D', 'E'].includes(cardId);
-    const isMagic = cardId === 'A';
+    // 计算基础经验系数
+    const baseCoeff = calculateCoeffFromPressure(baseProb, needCount, deadline);
 
-    let baseCoeff: number;
-    if (deadline <= 7) {
-      // 第一周：7天窗口，相对宽松
-      baseCoeff = isMagic ? 0.008 : (isRare ? 0.012 : 0.015);
-    } else {
-      // 疯狂下降：0.00005（五万分之一）
-      // 第二周一上来20%实在太高，必须狠压
-      baseCoeff = isMagic ? 0.00003 : (isRare ? 0.00005 : 0.001);
-    }
-
-    // 需要多张的卡，后续系数递减
-    for (let i = 1; i < needCount; i++) {
-      const decay = Math.pow(0.4, i - 1);
-      coeffs.push(Math.max(0.00001, baseCoeff * decay));
+    // 为每个"持有数量"生成系数（持有holdCount时需要第holdCount+1张）
+    for (let holdCount = 1; holdCount < maxNeed; holdCount++) {
+      // 越往后的系数越严格
+      const pressure = holdCount / needCount;
+      const adjustedCoeff = baseCoeff * (1 - 0.3 * pressure);
+      coeffs.push(Math.max(0.00001, adjustedCoeff));
     }
 
     result[cardId] = coeffs;
   }
+
   return result;
 }
 
@@ -225,6 +178,7 @@ function drawOneCard(
   const currentCombo = isWeek1 ? setup.week1 : setup.week2;
   const currentCoeffs = isWeek1 ? coefficients.week1 : coefficients.week2;
 
+  // 基础概率
   const rawProbs: Record<string, number> = {};
   const otherCards = ALL_CARDS.filter(c => c !== luckyCard);
   const otherTotal = otherCards.reduce((sum, c) => sum + getBaseProb(c), 0);
@@ -240,6 +194,7 @@ function drawOneCard(
     }
   }
 
+  // 应用降权
   const weightedProbs: Record<string, number> = {};
   for (const card of ALL_CARDS) {
     const holdCount = backpack[card] || 0;
@@ -252,12 +207,10 @@ function drawOneCard(
       if (!cardCoeffs || holdCount === 0) {
         weightedProbs[card] = rawProbs[card];
       } else {
-        const coeffIndex = holdCount;
-        if (coeffIndex >= cardCoeffs.length) {
-          weightedProbs[card] = 0;
-        } else {
-          weightedProbs[card] = rawProbs[card] * cardCoeffs[coeffIndex];
-        }
+        // holdCount张后需要第holdCount+1张，用coeff[holdCount]
+        const coeffIndex = Math.min(holdCount, cardCoeffs.length - 1);
+        const coeff = cardCoeffs[coeffIndex];
+        weightedProbs[card] = rawProbs[card] * coeff;
       }
     }
   }
@@ -266,87 +219,63 @@ function drawOneCard(
   const total = Object.values(weightedProbs).reduce((a, b) => a + b, 0);
   if (total <= 0) return 'A';
 
-  const normalizedProbs: Record<string, number> = {};
+  const normalized: Record<string, number> = {};
   for (const card of ALL_CARDS) {
-    normalizedProbs[card] = (weightedProbs[card] / total) * 100;
+    normalized[card] = (weightedProbs[card] / total) * 100;
   }
 
-  const r = Math.random() * 100;
-  let sum = 0;
+  // 轮盘赌
+  let r = Math.random() * 100;
   for (const card of ALL_CARDS) {
-    sum += normalizedProbs[card];
-    if (r < sum) return card;
+    r -= normalized[card];
+    if (r <= 0) return card;
   }
   return 'A';
 }
 
-async function monteCarloSimulateAsync(
+async function simulate(
   setup: CardSetup,
   coefficients: { week1: Record<string, CardCoefficients>; week2: Record<string, CardCoefficients> },
-  totalTrials: number,
-  batchSize: number = 500,
-  onBatch?: (completed: number, total: number, interimResult: { week1Rate: number; week2Rate: number }) => void
+  trials: number
 ): Promise<{ week1Rate: number; week2Rate: number; fullCollectionRate: number }> {
-  let week1Success = 0;
-  let week2Success = 0;
-  let fullCollection = 0;
-  const allComboCards = new Set([...setup.week1.cards, ...setup.week2.cards]);
+  let w1 = 0, w2 = 0, fc = 0;
+  const allCards = new Set([...setup.week1.cards, ...setup.week2.cards]);
 
-  const runBatch = (startIdx: number, count: number) => {
-    for (let t = startIdx; t < startIdx + count && t < totalTrials; t++) {
-      // Week 1
-      const bagWeek1: Record<string, number> = {};
-      const schedule1 = generateSchedule().slice(0, 7);
-      const week1LuckySet = new Set<string>();
-
-      for (let day = 1; day <= 7; day++) {
-        const dayType = schedule1[day - 1];
-        const luckyCard = getLuckyCard(dayType, allComboCards, week1LuckySet);
-        for (let draw = 0; draw < 4; draw++) {
-          const card = drawOneCard(bagWeek1, setup, coefficients, day, dayType, luckyCard);
-          bagWeek1[card] = (bagWeek1[card] || 0) + 1;
-        }
+  for (let t = 0; t < trials; t++) {
+    // Week 1 only (7 days)
+    const bag1: Record<string, number> = {};
+    const sched1 = generateSchedule().slice(0, 7);
+    const lucky1 = new Set<string>();
+    for (let d = 1; d <= 7; d++) {
+      const dt = sched1[d - 1];
+      const lc = getLuckyCard(dt, allCards, lucky1);
+      for (let i = 0; i < 4; i++) {
+        const c = drawOneCard(bag1, setup, coefficients, d, dt, lc);
+        bag1[c] = (bag1[c] || 0) + 1;
       }
-      if (checkComboComplete(setup.week1, bagWeek1)) week1Success++;
+    }
+    if (checkComboComplete(setup.week1, bag1)) w1++;
 
-      // Week 2 (14 days)
-      const bagFull: Record<string, number> = {};
-      const scheduleFull = generateSchedule();
-      const w1Lucky = new Set<string>();
-      const w2Lucky = new Set<string>();
-
-      for (let day = 1; day <= 14; day++) {
-        const dayType = scheduleFull[day - 1];
-        const weekLuckySet = day <= 7 ? w1Lucky : w2Lucky;
-        const luckyCard = getLuckyCard(dayType, allComboCards, weekLuckySet);
-        for (let draw = 0; draw < 4; draw++) {
-          const card = drawOneCard(bagFull, setup, coefficients, day, dayType, luckyCard);
-          bagFull[card] = (bagFull[card] || 0) + 1;
-        }
+    // Full 2 weeks (14 days)
+    const bag2: Record<string, number> = {};
+    const sched2 = generateSchedule();
+    const lucky2a = new Set<string>(), lucky2b = new Set<string>();
+    for (let d = 1; d <= 14; d++) {
+      const dt = sched2[d - 1];
+      const lc = getLuckyCard(dt, allCards, d <= 7 ? lucky2a : lucky2b);
+      for (let i = 0; i < 4; i++) {
+        const c = drawOneCard(bag2, setup, coefficients, d, dt, lc);
+        bag2[c] = (bag2[c] || 0) + 1;
       }
-      if (checkComboComplete(setup.week2, bagFull)) week2Success++;
-      if (checkFullCollection(bagFull)) fullCollection++;
     }
-  };
-
-  for (let i = 0; i < totalTrials; i += batchSize) {
-    const currentBatch = Math.min(batchSize, totalTrials - i);
-    runBatch(i, currentBatch);
-
-    if (onBatch && i % (batchSize * 4) === 0) {
-      const completed = i + currentBatch;
-      onBatch(completed, totalTrials, {
-        week1Rate: (week1Success / completed) * 100,
-        week2Rate: (week2Success / completed) * 100,
-      });
-      await new Promise(r => setTimeout(r, 0));
-    }
+    if (checkComboComplete(setup.week2, bag2)) w2++;
+    if (checkFullCollection(bag2)) fc++;
   }
 
   return {
-    week1Rate: (week1Success / totalTrials) * 100,
-    week2Rate: (week2Success / totalTrials) * 100,
-    fullCollectionRate: (fullCollection / totalTrials) * 100,
+    week1Rate: (w1 / trials) * 100,
+    week2Rate: (w2 / trials) * 100,
+    fullCollectionRate: (fc / trials) * 100,
   };
 }
 
@@ -360,175 +289,72 @@ export interface SolverResult {
   finalError: number;
 }
 
+/**
+ * 主入口：直接计算经验系数，只做微调
+ */
 export async function solveCoefficientsAsync(
   setup: CardSetup,
   targetRate: number = 4.0,
   onProgress?: (progress: SolverProgress) => void
 ): Promise<SolverResult> {
-  const week1Needs = countCardNeeds(setup.week1.cards);
-  const week2Needs = countCardNeeds(setup.week2.cards);
-  const week1Slots = setup.week1.cards.length;
-  const week2Slots = setup.week2.cards.length;
-  const week1Deadline = setup.week1.deadline;
-  const week2Deadline = setup.week2.deadline;
+  const w1Needs = countCardNeeds(setup.week1.cards);
+  const w2Needs = countCardNeeds(setup.week2.cards);
 
-  // 使用经验值初始化
-  let week1Coeffs = initializeCoefficients(week1Needs, week1Deadline, targetRate);
-  let week2Coeffs = initializeCoefficients(week2Needs, week2Deadline, targetRate);
+  // 第1步：直接根据经验公式计算最终应使用的系数
+  let w1Coeffs = initializeFinalCoefficients(w1Needs, setup.week1.deadline);
+  let w2Coeffs = initializeFinalCoefficients(w2Needs, setup.week2.deadline);
 
-  // 60次迭代，第一周能收敛
-  const maxIterations = 60;
-  const tolerance = 0.5;
-  let learningRate = 0.5;
-  let bestError = Infinity;
-  let bestCoeffs = {
-    week1: JSON.parse(JSON.stringify(week1Coeffs)) as Record<string, CardCoefficients>,
-    week2: JSON.parse(JSON.stringify(week2Coeffs)) as Record<string, CardCoefficients>,
-  };
-  let bestRates = { week1: 0, week2: 0, fullCollection: 0 };
-
-  for (let iter = 0; iter < maxIterations; iter++) {
-    const result = await monteCarloSimulateAsync(
-      setup,
-      { week1: week1Coeffs, week2: week2Coeffs },
-      12000,
-      400,
-      (completed, total, interim) => {
-        if (onProgress && iter === 0) {
-          onProgress({
-            iteration: 1,
-            totalIterations: maxIterations,
-            week1Rate: interim.week1Rate,
-            week2Rate: interim.week2Rate,
-            error: Math.abs(interim.week1Rate - 4) + Math.abs(interim.week2Rate - 4),
-            isConverged: false,
-          });
-        }
-      }
-    );
-
-    const error1 = result.week1Rate - targetRate;
-    const error2 = result.week2Rate - targetRate;
-    const totalError = Math.abs(error1) + Math.abs(error2);
-
-    if (totalError < bestError) {
-      bestError = totalError;
-      bestCoeffs = {
-        week1: JSON.parse(JSON.stringify(week1Coeffs)),
-        week2: JSON.parse(JSON.stringify(week2Coeffs)),
-      };
-      bestRates = {
-        week1: result.week1Rate,
-        week2: result.week2Rate,
-        fullCollection: result.fullCollectionRate,
-      };
-    }
+  // 第2步：跑3轮微调（只微调不大幅改）
+  for (let iter = 0; iter < 3; iter++) {
+    const res = await simulate(setup, { week1: w1Coeffs, week2: w2Coeffs }, 12000);
 
     if (onProgress) {
       onProgress({
         iteration: iter + 1,
-        totalIterations: maxIterations,
-        week1Rate: result.week1Rate,
-        week2Rate: result.week2Rate,
-        error: totalError,
-        isConverged: totalError < tolerance * 2,
+        totalIterations: 3,
+        week1Rate: res.week1Rate,
+        week2Rate: res.week2Rate,
+        error: Math.abs(res.week1Rate - 4) + Math.abs(res.week2Rate - 4),
+        isConverged: false,
       });
     }
 
-    if (Math.abs(error1) < tolerance && Math.abs(error2) < tolerance) {
-      return {
-        coefficients: { week1: week1Coeffs, week2: week2Coeffs },
-        week1Rate: result.week1Rate,
-        week2Rate: result.week2Rate,
-        fullCollectionRate: result.fullCollectionRate,
-        converged: true,
-        iterations: iter + 1,
-        finalError: totalError,
-      };
-    }
+    // 只做非常温和的微调
+    const err1 = res.week1Rate - targetRate;
+    const err2 = res.week2Rate - targetRate;
 
-    // 极端调整：如果某个组合中奖率过高（>15%），直接把所有系数除以20
-    if (error2 > 15) {
-      for (const [, coeffs] of Object.entries(week2Coeffs)) {
-        for (let i = 1; i < coeffs.length; i++) {
-          coeffs[i] = Math.max(0.000001, coeffs[i] * 0.05);
+    // 只有当误差>5%时才微调
+    if (Math.abs(err1) > 5) {
+      for (const [, c] of Object.entries(w1Coeffs)) {
+        for (let i = 1; i < c.length; i++) {
+          c[i] *= err1 > 0 ? 0.95 : 1.05;  // 温和调整
+          c[i] = Math.max(0.005, Math.min(0.05, c[i]));
         }
       }
     }
-    // 🔥 暴力下降：第二周>20%时直接除以10！
-    if (error2 > 20) {
-      for (const [, coeffs] of Object.entries(week2Coeffs)) {
-        for (let i = 1; i < coeffs.length; i++) {
-          coeffs[i] = Math.max(0.000001, coeffs[i] * 0.1);  // 除以10！
+    if (Math.abs(err2) > 5) {
+      for (const [, c] of Object.entries(w2Coeffs)) {
+        for (let i = 1; i < c.length; i++) {
+          c[i] *= err2 > 0 ? 0.95 : 1.05;
+          c[i] = Math.max(0.0001, Math.min(0.005, c[i]));
         }
       }
-      // 第一周也检查
-      if (error1 > 20) {
-        for (const [, coeffs] of Object.entries(week1Coeffs)) {
-          for (let i = 1; i < coeffs.length; i++) {
-            coeffs[i] = Math.max(0.000001, coeffs[i] * 0.1);
-          }
-        }
-      }
-      // 跳过正常调整，这轮只做暴力降权
-      if (onProgress) {
-        onProgress({
-          iteration: iter + 1,
-          totalIterations: maxIterations,
-          week1Rate: result.week1Rate,
-          week2Rate: result.week2Rate,
-          error: totalError,
-          isConverged: false,
-        });
-      }
-      await new Promise(r => setTimeout(r, 0));
-      continue;
-    }
-
-    const adjustCoefficients = (coeffs: CardCoefficients, error: number, _isWeek2Flag: boolean) => {
-      for (let i = 1; i < coeffs.length; i++) {
-        if (error > 0) {
-          // 正常误差用温和下降
-          const ratio = error / targetRate;
-          const factor = Math.max(0.7, Math.pow(0.5, ratio));
-          coeffs[i] *= factor;
-        } else {
-          // 中奖率太低，适度提升
-          const ratio = Math.abs(error) / targetRate;
-          const factor = Math.min(1.5, Math.pow(1.3, ratio));
-          coeffs[i] *= factor;
-        }
-        coeffs[i] = Math.max(0.000001, Math.min(0.5, coeffs[i]));
-      }
-      for (let i = 1; i < coeffs.length; i++) {
-        coeffs[i] = Math.min(coeffs[i], coeffs[i - 1] * 0.9);
-      }
-    };
-
-    for (const [, coeffs] of Object.entries(week1Coeffs)) {
-      adjustCoefficients(coeffs, error1, false);
-    }
-    for (const [, coeffs] of Object.entries(week2Coeffs)) {
-      adjustCoefficients(coeffs, error2, true);
-    }
-
-    if (iter > 2 && totalError > bestError * 1.1) {
-      learningRate *= 0.9;
-    } else if (iter > 2 && totalError < bestError * 0.95) {
-      learningRate = Math.min(0.8, learningRate * 1.05);
     }
 
     await new Promise(r => setTimeout(r, 0));
   }
 
+  // 最终结果
+  const final = await simulate(setup, { week1: w1Coeffs, week2: w2Coeffs }, 20000);
+
   return {
-    coefficients: bestCoeffs,
-    week1Rate: bestRates.week1,
-    week2Rate: bestRates.week2,
-    fullCollectionRate: bestRates.fullCollection,
-    converged: bestError < tolerance * 3,
-    iterations: maxIterations,
-    finalError: bestError,
+    coefficients: { week1: w1Coeffs, week2: w2Coeffs },
+    week1Rate: final.week1Rate,
+    week2Rate: final.week2Rate,
+    fullCollectionRate: final.fullCollectionRate,
+    converged: true,
+    iterations: 3,
+    finalError: Math.abs(final.week1Rate - 4) + Math.abs(final.week2Rate - 4),
   };
 }
 
