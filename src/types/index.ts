@@ -73,13 +73,14 @@ export interface CoefficientResult {
     missing2: MissingCountCoeffs;  // 缺2张时的系数
     missing1: MissingCountCoeffs;  // 缺1张时的系数
   };
-  // 完整系数表
-  allCoefficients: CoefficientSet;
+  // 完整系数表（每张卡持有1张时的降权系数）
+  allCoefficients: Record<string, number>;
   // 组合成功率（每组组合的中奖率）
   combinationRates: Record<string, number>;
   // 14天全收集率
   fullCollectionRate: number;
   // 收敛状态
   converged: boolean;
-  iterations: number;
+  // 误差值
+  error: number;
 }

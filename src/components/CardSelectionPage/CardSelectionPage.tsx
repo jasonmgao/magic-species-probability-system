@@ -142,7 +142,8 @@ export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps
       );
 
       setResult(coefficientResult);
-      message.success(`求解完成！迭代 ${coefficientResult.iterations} 次`);
+      const errorText = coefficientResult.converged ? '已收敛' : `误差 ${coefficientResult.error.toFixed(2)}%`;
+      message.success(`求解完成！${errorText}`);
     } catch (error) {
       message.error('求解失败: ' + String(error));
     } finally {

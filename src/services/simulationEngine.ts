@@ -21,36 +21,31 @@ export { ALL_CARDS };
 export async function runFullSimulationAsync(
   setup: CardSetup,
   targetRate: number = 4.0,
-  _trials?: number,  // 保持兼容，内部使用固定值
+  _trials?: number,
   onProgress?: (completed: number, total: number) => void
 ): Promise<CoefficientResult> {
 
-  // 模拟进度（二分搜索的迭代次数）
-  const maxIterations = 50;
+  // 模拟进度
+  const totalSteps = 100;
 
-  // 使用 worker 进行异步计算
   return new Promise((resolve) => {
-    let iteration = 0;
+    let step = 0;
 
-    const runIteration = () => {
-      iteration++;
-
+    const runProgress = () => {
+      step++;
       if (onProgress) {
-        onProgress(iteration, maxIterations);
+        onProgress(step, totalSteps);
       }
-
-      // 分片执行，让出控制权
-      if (iteration < maxIterations) {
-        setTimeout(runIteration, 10);
+      if (step < totalSteps) {
+        setTimeout(runProgress, 20);
       }
     };
 
-    // 开始迭代反馈
-    runIteration();
+    runProgress();
 
-    // 执行求解（同步，但会快速返回）
+    // 执行求解
     setTimeout(() => {
-      const solverResult = solveCoefficients(setup, targetRate, 0.2, maxIterations);
+      const solverResult = solveCoefficients(setup, targetRate, 3000);
       const report = generateCoefficientReport(setup, solverResult);
       resolve(report);
     }, 100);
@@ -59,7 +54,6 @@ export async function runFullSimulationAsync(
 
 /**
  * 生成示例案例
- * 基于求解的系数，生成不同背包状态下的案例
  */
 export function generateCases(
   setup: CardSetup,
@@ -77,62 +71,51 @@ export function generateCases(
     expectedSuccess: string;
   }> = [];
 
-  // 获取组合中涉及的所有卡及其最大需求
-  const cardNeeds: Record<string, number> = {};
-  for (const combo of setup.combinations) {
-    for (const req of combo.requirements) {
-      cardNeeds[req.cardId] = Math.max(cardNeeds[req.cardId] || 0, req.count);
-    }
-  }
+  const firstCombo = setup.combinations[0];
+  const secondCombo = setup.combinations[1];
 
-  // 情况1：全新用户（只有填充卡）
+  // 情况1：全新用户
   cases.push({
     name: '全新用户',
-    description: '背包中只有填充卡（F-J），组合卡为0张',
+    description: '背包为空（0张组合卡）',
     initialBag: {},
-    expectedSuccess: `约 ${coefficientResult.combinationRates[setup.combinations[0]?.name] ?? 4}%`,
+    expectedSuccess: `约 ${coefficientResult.combinationRates[firstCombo?.name] ?? 4}%`,
   });
 
-  // 情况2：持有部分组合卡（第一套缺2张）
-  const firstCombo = setup.combinations[0];
+  // 情况2：第一套缺2张
   if (firstCombo && firstCombo.requirements.length >= 2) {
     const partialBag: Record<string, number> = {};
-    // 持有第一张卡1张
-    partialBag[firstCombo.requirements[0].cardId] = 1;
+    const firstCard = firstCombo.requirements[0].cardId;
+    partialBag[firstCard] = 1;
     cases.push({
       name: '第一套缺2张',
-      description: `已持有 ${firstCombo.requirements[0].cardId}×1，还需 ${firstCombo.requirements.slice(1).map(r => `${r.cardId}×${r.count}`).join(' + ')}`,
+      description: `已持有 ${firstCard}×1，触发降权系数 ${((coefficientResult.allCoefficients[firstCard] ?? 0.02) * 100).toFixed(1)}%`,
       initialBag: partialBag,
-      expectedSuccess: '略低于全新用户',
+      expectedSuccess: '概率降低（受系数影响）',
     });
   }
 
-  // 情况3：持有更多填充卡
-  const fillCards = ALL_CARDS.filter(c => !cardNeeds[c]);
-  if (fillCards.length >= 2) {
-    const fillBag: Record<string, number> = {};
-    fillCards.slice(0, 3).forEach(c => {
-      fillBag[c] = 1;
-    });
+  // 情况3：第二套进行中
+  if (secondCombo) {
     cases.push({
-      name: '部分填充卡',
-      description: `已持有 ${Object.entries(fillBag).map(([c, n]) => `${c}×${n}`).join(', ')}`,
-      initialBag: fillBag,
-      expectedSuccess: '与全新用户相近（填充卡不影响）',
+      name: '第二周状态',
+      description: `目标：${secondCombo.requirements.map(r => `${r.cardId}×${r.count}`).join(' + ')}`,
+      initialBag: {},
+      expectedSuccess: `约 ${coefficientResult.combinationRates[secondCombo?.name] ?? 4}%`,
     });
   }
 
   // 情况4：接近完成
-  const nearCompleteBag: Record<string, number> = {};
   if (firstCombo) {
+    const nearBag: Record<string, number> = {};
     for (const req of firstCombo.requirements) {
-      nearCompleteBag[req.cardId] = Math.max(0, req.count - 1);
+      nearBag[req.cardId] = Math.max(0, req.count - 1);
     }
     cases.push({
       name: '接近完成',
-      description: '第一套只差1张卡',
-      initialBag: nearCompleteBag,
-      expectedSuccess: '受降权影响，概率降低',
+      description: '第一套只差1张（持有2张时系数=0，无法获得）',
+      initialBag: nearBag,
+      expectedSuccess: '极低（需等待下周重置）',
     });
   }
 
@@ -169,22 +152,27 @@ export function generateProbabilityTables(
 
   // 降权系数表
   const coefficientTable = ALL_CARDS.map(card => {
-    const coeffs = allCoefficients[card] || [1, 0];
+    const coeff = allCoefficients[card];
     const isComboCard = comboCards.has(card);
+
+    if (!isComboCard) {
+      return {
+        card,
+        isComboCard: false,
+        coeff0: '100%',
+        coeff1: '0%',
+        coeff2: 'N/A',
+        description: '填充卡，只能获得1张',
+      };
+    }
 
     return {
       card,
-      isComboCard,
-      // 持有0张时的系数
-      coeff0: `${(coeffs[0] * 100).toFixed(2)}%`,
-      // 持有1张时的系数
-      coeff1: coeffs[1] !== undefined ? `${(coeffs[1] * 100).toFixed(4)}%` : 'N/A',
-      // 持有2张时的系数
-      coeff2: coeffs[2] !== undefined ? `${(coeffs[2] * 100).toFixed(2)}%` : 'N/A',
-      // 说明
-      description: isComboCard
-        ? `最多可获得${coeffs.length > 2 ? 2 : 1}张`
-        : '只能获得1张',
+      isComboCard: true,
+      coeff0: '100%',
+      coeff1: coeff ? `${(coeff * 100).toFixed(2)}%` : '2.00%',
+      coeff2: '0%',
+      description: '组合卡，最多2张',
     };
   });
 

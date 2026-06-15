@@ -1,312 +1,301 @@
 /**
- * 降权系数求解器
- * 使用二分搜索找到合适的降权系数，使得目标组合中奖率=4%
+ * 降权系数求解器（修正版）
+ * 参考用户的Python代码逻辑
  */
 
 import type { CardSetup, CoefficientSet, CoefficientResult } from '@/types';
 
 const ALL_CARDS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 
-// 基础概率配置
-const BASE_PROBS: Record<string, number> = {
-  A: 2,   // 神奇卡 2%
-  B: 7, C: 7, D: 7, E: 7,  // 稀有卡 7% each
-  F: 14, G: 14, H: 14, I: 14, J: 14,  // 普通卡 14% each
+// 卡片类型映射
+function getCardType(card: string): 'common' | 'rare' | 'magic' {
+  if (card === 'A') return 'magic';
+  if (['B', 'C', 'D', 'E'].includes(card)) return 'rare';
+  return 'common';
+}
+
+// 单日概率转换：4次独立抽卡=>至少1次的概率
+function singleToDay(p: number): number {
+  if (p >= 1.0) return 1.0;
+  if (p <= 0.0) return 0.0;
+  return 1.0 - Math.pow(1.0 - p, 4.0);
+}
+
+// 基础概率配置（按比例，非百分比）
+const SINGLE_PROBS: Record<string, number> = {
+  'common_normal': 0.1608,
+  'common_lucky': 0.0120,
+  'common_rare_day': 0.1487,
+  'common_magic_day': 0.0120,
+  'rare_normal': 0.0744,
+  'rare_lucky': 0.0120,
+  'rare_common_day': 0.0804,
+  'rare_magic_day': 0.0706,
+  'magic_normal': 0.0000,
+  'magic_lucky': 0.0120,
+  'magic_common_day': 0.0230,
+  'magic_rare_day': 0.0212,
 };
 
-// 验证概率总和
-const TOTAL_BASE_PROB = Object.values(BASE_PROBS).reduce((a, b) => a + b, 0);
-console.assert(Math.abs(TOTAL_BASE_PROB - 100) < 0.1, '基础概率总和应为100%');
+// 组合分布权重（第一组幸运卡类型，第二组幸运卡类型，权重）
+const COMBO_DIST: Array<[string, string, number]> = [
+  ['common', 'common', 0.22],
+  ['common', 'rare', 0.22],
+  ['common', 'magic', 0.06],
+  ['rare', 'common', 0.22],
+  ['rare', 'rare', 0.13],
+  ['rare', 'magic', 0.04],
+  ['magic', 'common', 0.06],
+  ['magic', 'rare', 0.04],
+];
+
+/**
+ * 获取单次抽卡基础概率
+ */
+function getSingleP(
+  cardType: 'common' | 'rare' | 'magic',
+  dayType: 'common' | 'rare' | 'magic',
+  isLucky: boolean
+): number {
+  if (cardType === 'common') {
+    if (dayType === 'common') return SINGLE_PROBS[isLucky ? 'common_lucky' : 'common_normal'];
+    if (dayType === 'rare') return SINGLE_PROBS['common_rare_day'];
+    if (dayType === 'magic') return SINGLE_PROBS['common_magic_day'];
+  } else if (cardType === 'rare') {
+    if (dayType === 'rare') return SINGLE_PROBS[isLucky ? 'rare_lucky' : 'rare_normal'];
+    if (dayType === 'common') return SINGLE_PROBS['rare_common_day'];
+    if (dayType === 'magic') return SINGLE_PROBS['rare_magic_day'];
+  } else if (cardType === 'magic') {
+    if (dayType === 'magic') return SINGLE_PROBS[isLucky ? 'magic_lucky' : 'magic_normal'];
+    if (dayType === 'common') return SINGLE_PROBS['magic_common_day'];
+    if (dayType === 'rare') return SINGLE_PROBS['magic_rare_day'];
+  }
+  return 0.0;
+}
 
 interface SolverResult {
-  coefficients: CoefficientSet;
-  combinationRates: Record<string, number>;  // 每组组合的中奖率
-  fullCollectionRate: number;  // 14天集齐10张卡的概率
+  coefficients: Record<string, number>; // 每张卡的降权系数（持有1张时）
+  combinationRates: Record<string, number>;
+  fullCollectionRate: number;
   converged: boolean;
-  iterations: number;
+  error: number;
 }
 
 /**
  * 求解降权系数
- * 目标：使每组组合的中奖率都接近 targetRate (默认4%)
+ * 目标：使每组组合的加权中奖率都接近 targetRate (默认4%)
  */
 export function solveCoefficients(
   setup: CardSetup,
   targetRate: number = 4.0,
-  tolerance: number = 0.2,  // 容许误差±0.2%
-  maxIterations: number = 50
+  trials: number = 3000
 ): SolverResult {
 
-  // 确定哪些卡需要降权（出现在组合中的卡）
-  const cardsInCombos = new Set<string>();
+  // 按组合分组收集卡片
+  const comboCards: string[][] = [];
   for (const combo of setup.combinations) {
-    for (const req of combo.requirements) {
-      cardsInCombos.add(req.cardId);
-    }
+    const cards = combo.requirements.map(r => r.cardId);
+    comboCards.push(cards);
   }
 
-  // 初始化系数搜索范围
-  let lowCoeff = 0.001;   // 最小降权系数 0.1%
-  let highCoeff = 0.5;    // 最大降权系数 50%
+  // 网格搜索范围
+  // 第一组系数（对应 AaB）
+  const rangeA = [0.005, 0.008, 0.010, 0.012, 0.015, 0.020, 0.025, 0.030, 0.035, 0.040, 0.050];
+  // 第二组系数（对应 CcD）
+  const rangeC = [0.005, 0.006, 0.008, 0.010, 0.012, 0.014, 0.016, 0.018, 0.020];
 
   let bestResult: SolverResult | null = null;
   let minError = Infinity;
 
-  for (let iter = 0; iter < maxIterations; iter++) {
-    const midCoeff = (lowCoeff + highCoeff) / 2;
+  for (const coeffA of rangeA) {
+    for (const coeffC of rangeC) {
+      // 构建系数表
+      const coefficients: Record<string, number> = {};
 
-    // 构建系数表
-    const coefficients = buildCoefficients(cardsInCombos, midCoeff);
+      // 为第一组组合的卡设置系数 coeffA
+      if (comboCards[0]) {
+        for (const card of comboCards[0]) {
+          coefficients[card] = coeffA;
+        }
+      }
+      // 为第二组组合的卡设置系数 coeffC
+      if (comboCards[1]) {
+        for (const card of comboCards[1]) {
+          // 如果卡片也在第一组中，使用较小的系数（更严格）
+          coefficients[card] = Math.min(coefficients[card] ?? 1, coeffC);
+        }
+      }
 
-    // 运行模拟
-    const simResult = runSimulation(setup, coefficients, 10000);
+      // 运行加权模拟（考虑所有幸运卡组合分布）
+      const rates = runWeightedSim(comboCards, coefficients, trials);
 
-    // 计算误差（所有组合与目标率的偏差）
-    let maxError = 0;
-    let totalError = 0;
-    for (const rate of Object.values(simResult.combinationRates)) {
-      const error = Math.abs(rate - targetRate);
-      maxError = Math.max(maxError, error);
-      totalError += error;
-    }
+      // 计算误差（加权平均与目标的偏差）
+      let totalError = 0;
+      for (let i = 0; i < setup.combinations.length; i++) {
+        const comboName = setup.combinations[i].name;
+        const rate = rates[i] ?? 0;
+        totalError += Math.abs(rate - targetRate);
+      }
 
-    // 记录最佳结果
-    if (totalError < minError) {
-      minError = totalError;
-      bestResult = {
-        coefficients,
-        combinationRates: simResult.combinationRates,
-        fullCollectionRate: simResult.fullCollectionRate,
-        converged: maxError <= tolerance,
-        iterations: iter + 1,
-      };
-    }
-
-    // 检查是否收敛
-    if (maxError <= tolerance) {
-      return {
-        coefficients,
-        combinationRates: simResult.combinationRates,
-        fullCollectionRate: simResult.fullCollectionRate,
-        converged: true,
-        iterations: iter + 1,
-      };
-    }
-
-    // 二分搜索调整
-    // 如果中奖率太高，说明降权不够，需要增大系数（让用户更容易获得）
-    // 如果中奖率太低，说明降权太多，需要减小系数
-    const avgRate = Object.values(simResult.combinationRates).reduce((a, b) => a + b, 0)
-      / Object.values(simResult.combinationRates).length;
-
-    if (avgRate > targetRate) {
-      // 中奖率太高，需要更强降权（减小系数）
-      highCoeff = midCoeff;
-    } else {
-      // 中奖率太低，需要更弱降权（增大系数）
-      lowCoeff = midCoeff;
+      if (totalError < minError) {
+        minError = totalError;
+        bestResult = {
+          coefficients,
+          combinationRates: Object.fromEntries(
+            setup.combinations.map((c, i) => [c.name, rates[i] ?? 0])
+          ),
+          fullCollectionRate: rates[2] ?? 0, // 全收集率
+          converged: totalError < 0.5, // 误差<0.5%认为收敛
+          error: totalError,
+        };
+      }
     }
   }
 
-  // 返回最佳结果（即使未完全收敛）
   return bestResult || {
-    coefficients: buildCoefficients(cardsInCombos, 0.02),
+    coefficients: {},
     combinationRates: {},
     fullCollectionRate: 0,
     converged: false,
-    iterations: maxIterations,
+    error: minError,
   };
 }
 
 /**
- * 构建系数表
- * 规则：
- * - 持有0张：系数 1.0（不降权）
- * - 持有1张：系数 = baseCoeff
- * - 持有2张及以上：系数 = 0（完全禁止）
- *
- * 对于组合中的卡，需要细分状态：
- * - 缺3张（持有0张）：系数 1.0
- * - 缺2张（持有1张）：系数 = baseCoeff
- * - 缺1张（持有2张）：系数 = 0
+ * 运行加权模拟（考虑幸运卡组合分布）
  */
-function buildCoefficients(
-  cardsInCombos: Set<string>,
-  baseCoeff: number
-): CoefficientSet {
-  const coeffs: CoefficientSet = {};
-
-  for (const card of ALL_CARDS) {
-    if (cardsInCombos.has(card)) {
-      // 组合中的卡：三级降权
-      // [持有0张系数, 持有1张系数, 持有2张系数]
-      coeffs[card] = [1.0, baseCoeff, 0];
-    } else {
-      // 非组合卡（填充卡）：二级降权
-      // [持有0张系数, 持有1张系数]（持有1张后不能再获得）
-      coeffs[card] = [1.0, 0];
-    }
-  }
-
-  return coeffs;
-}
-
-/**
- * 运行蒙特卡洛模拟
- */
-function runSimulation(
-  setup: CardSetup,
-  coefficients: CoefficientSet,
+function runWeightedSim(
+  comboCards: string[][],
+  coefficients: Record<string, number>,
   trials: number
-): { combinationRates: Record<string, number>; fullCollectionRate: number } {
-  const comboSuccesses: Record<string, number> = {};
-  for (const combo of setup.combinations) {
-    comboSuccesses[combo.name] = 0;
-  }
-  let fullCollectionCount = 0;
+): number[] {
+  // 每人每组的加权成功率
+  let w1Sum = 0, w2Sum = 0;
+  const targetRates: number[] = [0, 0]; // [第一组成功率, 第二组成功率]
 
-  for (let i = 0; i < trials; i++) {
-    const result = simulateOneRound(setup, coefficients);
-
-    for (const [name, success] of Object.entries(result.comboSuccess)) {
-      if (success) comboSuccesses[name]++;
-    }
-    if (result.fullCollection) fullCollectionCount++;
+  for (const [aType, cType, weight] of COMBO_DIST) {
+    const [r1, r2] = runSim(comboCards, coefficients, aType as any, cType as any, trials);
+    w1Sum += r1 * weight;
+    w2Sum += r2 * weight;
   }
 
-  const combinationRates: Record<string, number> = {};
-  for (const combo of setup.combinations) {
-    combinationRates[combo.name] = (comboSuccesses[combo.name] / trials) * 100;
-  }
+  // 计算加权平均成功率（百分比）
+  const totalWeight = COMBO_DIST.reduce((sum, [,, w]) => sum + w, 0);
+  targetRates[0] = (w1Sum / totalWeight) * 100;
+  targetRates[1] = (w2Sum / totalWeight) * 100;
 
-  return {
-    combinationRates,
-    fullCollectionRate: (fullCollectionCount / trials) * 100,
-  };
+  return targetRates;
 }
 
 /**
- * 单次完整模拟（14天）
- * 考虑第二周卡组在第一周也会积累
+ * 单次模拟（一个幸运卡组合场景）
  */
-function simulateOneRound(
-  setup: CardSetup,
-  coefficients: CoefficientSet
-): { comboSuccess: Record<string, boolean>; fullCollection: boolean } {
-  // 初始化背包（空）
-  const bag: Record<string, number> = {};
+function runSim(
+  comboCards: string[][],
+  coefficients: Record<string, number>,
+  aType: 'common' | 'rare' | 'magic',
+  cType: 'common' | 'rare' | 'magic',
+  trials: number
+): [number, number] {
+  let s1 = 0, s2 = 0;
 
-  // 跟踪每组组合是否已获得奖励
-  const comboSuccess: Record<string, boolean> = {};
-  for (const combo of setup.combinations) {
-    comboSuccess[combo.name] = false;
-  }
+  for (let t = 0; t < trials; t++) {
+    // 生成两周的日程（每周5普通+1稀有+1神奇，随机排序）
+    const week1 = ['common', 'common', 'common', 'common', 'common', 'rare', 'magic'];
+    const week2 = ['common', 'common', 'common', 'common', 'common', 'rare', 'magic'];
+    shuffleArray(week1);
+    shuffleArray(week2);
+    const days = [...week1, ...week2];
 
-  // 生成14天的日程（5普通日 + 1稀有日 + 1神奇日，每周循环）
-  const schedule = generateSchedule(14);
+    // 背包状态
+    const bag: Record<string, number> = {};
+    const luckyA = [0, 0]; // 两周的A组幸运卡状态
+    const luckyC = [0, 0]; // 两周的C组幸运卡状态
 
-  // 模拟14天
-  for (let day = 1; day <= 14; day++) {
-    const dayType = schedule[day - 1];
+    // 模拟14天
+    for (let day = 0; day < 14; day++) {
+      const dayType = days[day] as 'common' | 'rare' | 'magic';
+      const week = day < 7 ? 0 : 1;
 
-    // 每天4次抽卡
-    for (let draw = 0; draw < 4; draw++) {
-      const card = drawCard(bag, coefficients, dayType);
-      if (card) {
-        bag[card] = (bag[card] || 0) + 1;
+      // 判断是否是幸运卡日
+      const isALucky = (dayType === aType && luckyA[week] === 0);
+      if (isALucky) luckyA[week] = 1;
+      const isCLucky = (dayType === cType && luckyC[week] === 0);
+      if (isCLucky) luckyC[week] = 1;
+
+      // 第一组卡的抽卡概率
+      const cardsA = comboCards[0] || [];
+      const pA: number[] = [];
+      for (const card of cardsA) {
+        const cardType = getCardType(card);
+        let p = getSingleP(cardType, dayType, isALucky);
+        // 应用降权系数
+        const count = bag[card] || 0;
+        const coeff = coefficients[card] ?? 0.02;
+        if (count === 1) p *= coeff;
+        else if (count >= 2) p = 0;
+        pA.push(p);
       }
-    }
 
-    // 检查每组组合是否满足条件（在截止日期内）
-    for (const combo of setup.combinations) {
-      if (!comboSuccess[combo.name] && day <= combo.deadline) {
-        const isComplete = combo.requirements.every(req =>
-          (bag[req.cardId] || 0) >= req.count
-        );
-        if (isComplete) {
-          comboSuccess[combo.name] = true;
+      // 第二组卡的抽卡概率
+      const cardsC = comboCards[1] || [];
+      const pC: number[] = [];
+      for (const card of cardsC) {
+        const cardType = getCardType(card);
+        let p = getSingleP(cardType, dayType, isCLucky);
+        // 应用降权系数
+        const count = bag[card] || 0;
+        const coeff = coefficients[card] ?? 0.008;
+        if (count === 1) p *= coeff;
+        else if (count >= 2) p = 0;
+        pC.push(p);
+      }
+
+      // 模拟抽卡（每天4次=>转换为每日概率）
+      for (let i = 0; i < cardsA.length; i++) {
+        if (Math.random() < singleToDay(pA[i])) {
+          bag[cardsA[i]] = (bag[cardsA[i]] || 0) + 1;
+        }
+      }
+      for (let i = 0; i < cardsC.length; i++) {
+        if (Math.random() < singleToDay(pC[i])) {
+          bag[cardsC[i]] = (bag[cardsC[i]] || 0) + 1;
+        }
+      }
+
+      // 第6天检查第一组（第7天截止前的最后一天）
+      if (day === 6 && comboCards[0]) {
+        const reqs = comboCards[0];
+        const counts = reqs.map(c => bag[c] || 0);
+        // AaB => [2, 1, 0] (A:2张, B:1张)
+        if (counts[0] >= 2 && counts[1] >= 1) {
+          s1++;
         }
       }
     }
+
+    // 第14天检查第二组
+    if (comboCards[1]) {
+      const reqs = comboCards[1];
+      const counts = reqs.map(c => bag[c] || 0);
+      // CcD => [2, 1] (C:2张, D:1张)
+      if (counts[0] >= 2 && counts[1] >= 1) {
+        s2++;
+      }
+    }
   }
 
-  // 检查是否集齐10张卡
-  const fullCollection = ALL_CARDS.every(c => (bag[c] || 0) >= 1);
-
-  return { comboSuccess, fullCollection };
+  return [s1 / trials, s2 / trials];
 }
 
 /**
- * 生成随机日程
- * 每周：5普通日 + 1稀有日 + 1神奇日（顺序随机）
+ * Fisher-Yates 洗牌算法
  */
-function generateSchedule(days: number): ('normal' | 'rare' | 'legendary')[] {
-  const schedule: ('normal' | 'rare' | 'legendary')[] = [];
-
-  for (let week = 0; week < Math.ceil(days / 7); week++) {
-    // 每周的7天类型
-    const weekTypes: ('normal' | 'rare' | 'legendary')[] = [
-      'normal', 'normal', 'normal', 'normal', 'normal',
-      'rare', 'legendary'
-    ];
-    // 随机打乱
-    for (let i = weekTypes.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [weekTypes[i], weekTypes[j]] = [weekTypes[j], weekTypes[i]];
-    }
-    schedule.push(...weekTypes);
+function shuffleArray<T>(array: T[]): void {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
   }
-
-  return schedule.slice(0, days);
-}
-
-/**
- * 抽卡逻辑
- */
-function drawCard(
-  bag: Record<string, number>,
-  coefficients: CoefficientSet,
-  dayType: 'normal' | 'rare' | 'legendary'
-): string | null {
-  // 复制基础概率
-  const probs: Record<string, number> = { ...BASE_PROBS };
-
-  // 应用幸运日加成
-  if (dayType === 'rare') {
-    // 稀有日：B,C,D,E 概率变为 1.2%（但这里需要相对于原概率的倍数）
-    for (const card of ['B', 'C', 'D', 'E']) {
-      probs[card] *= 1.2 / 0.07; // 调整：从7%提升到约12%
-    }
-  } else if (dayType === 'legendary') {
-    // 神奇日：A 概率变为 1.2%
-    probs['A'] *= 1.2 / 0.02; // 调整：从2%提升到约12%
-  }
-
-  // 应用降权系数
-  for (const card of ALL_CARDS) {
-    const count = bag[card] || 0;
-    const coeffList = coefficients[card] || [1, 0];
-    const coeff = count < coeffList.length ? coeffList[count] : 0;
-    probs[card] *= coeff;
-  }
-
-  // 归一化
-  const total = Object.values(probs).reduce((a, b) => a + b, 0);
-  if (total <= 0) return null;
-
-  for (const card of ALL_CARDS) {
-    probs[card] = (probs[card] / total) * 100;
-  }
-
-  // 轮盘赌选择
-  const r = Math.random() * 100;
-  let sum = 0;
-  for (const [card, prob] of Object.entries(probs)) {
-    sum += prob;
-    if (r < sum) return card;
-  }
-
-  return 'A';
 }
 
 /**
@@ -318,55 +307,49 @@ export function generateCoefficientReport(
 ): CoefficientResult {
   const { coefficients, combinationRates, fullCollectionRate } = solverResult;
 
-  // 分析需要的卡
-  const cardsInCombos = new Set<string>();
-  const cardMaxNeeds: Record<string, number> = {};
-  for (const combo of setup.combinations) {
-    for (const req of combo.requirements) {
-      cardsInCombos.add(req.cardId);
-      cardMaxNeeds[req.cardId] = Math.max(
-        cardMaxNeeds[req.cardId] || 0,
-        req.count
-      );
+  // 按组合分组
+  const result: CoefficientResult = {
+    byMissingCount: {
+      missing3: {},
+      missing2: {},
+      missing1: {},
+    },
+    allCoefficients: {},
+    combinationRates,
+    fullCollectionRate,
+    converged: solverResult.converged,
+    error: solverResult.error,
+  };
+
+  // 第一组组合的系数 (missing2)
+  let firstComboCards: string[] = [];
+  let secondComboCards: string[] = [];
+
+  if (setup.combinations[0]) {
+    firstComboCards = setup.combinations[0].requirements.map(r => r.cardId);
+    for (const card of firstComboCards) {
+      const coeff = coefficients[card] ?? 0.02;
+      // 缺3张=持有0张(100%)，缺2张=持有1张(系数)，缺1张=持有2张(0%)
+      result.byMissingCount.missing3[card] = 1.0;
+      result.byMissingCount.missing2[card] = coeff;
+      result.byMissingCount.missing1[card] = 0;
+      result.allCoefficients[card] = coeff;
     }
   }
 
-  // 构建结果结构
-  const result: CoefficientResult = {
-    // 各组合的推荐系数（按缺卡数量）
-    byMissingCount: {
-      missing3: {},  // 缺3张时的系数（持有0张）
-      missing2: {},  // 缺2张时的系数（持有1张）
-      missing1: {},  // 缺1张时的系数（持有2张）
-    },
-    // 所有涉及的降权系数
-    allCoefficients: coefficients,
-    // 组合成功率
-    combinationRates,
-    // 14天全收集率
-    fullCollectionRate,
-    // 收敛状态
-    converged: solverResult.converged,
-    iterations: solverResult.iterations,
-  };
+  if (setup.combinations[1]) {
+    secondComboCards = setup.combinations[1].requirements.map(r => r.cardId);
+    for (const card of secondComboCards) {
+      const coeff = coefficients[card] ?? 0.008;
+      // 如果已经在第一组，用较小的系数
+      const finalCoeff = result.allCoefficients[card]
+        ? Math.min(result.allCoefficients[card], coeff)
+        : coeff;
 
-  // 填充按缺卡数量的系数
-  for (const card of cardsInCombos) {
-    const maxNeed = cardMaxNeeds[card] || 1;
-    const coeffs = coefficients[card] || [1, 0, 0];
-
-    // 缺3张 = 需要3张，持有0张
-    // 缺2张 = 需要2张，持有1张
-    // 缺1张 = 需要1张，持有2张
-    if (maxNeed >= 3) {
-      result.byMissingCount.missing3[card] = coeffs[0];  // 持有0张时的系数
-      result.byMissingCount.missing2[card] = coeffs[1];  // 持有1张时的系数
-      result.byMissingCount.missing1[card] = coeffs[2] ?? 0;  // 持有2张时的系数
-    } else if (maxNeed === 2) {
-      result.byMissingCount.missing2[card] = coeffs[0];  // 持有0张时的系数
-      result.byMissingCount.missing1[card] = coeffs[1];  // 持有1张时的系数
-    } else {
-      result.byMissingCount.missing1[card] = coeffs[0];  // 持有0张时的系数
+      result.byMissingCount.missing3[card] = 1.0;
+      result.byMissingCount.missing2[card] = finalCoeff;
+      result.byMissingCount.missing1[card] = 0;
+      result.allCoefficients[card] = finalCoeff;
     }
   }
 
@@ -374,4 +357,4 @@ export function generateCoefficientReport(
 }
 
 export type { SolverResult };
-export { ALL_CARDS, BASE_PROBS };
+export { ALL_CARDS };
