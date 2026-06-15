@@ -146,9 +146,9 @@ function initializeCoefficients(
       // 第一周：7天窗口，相对宽松
       baseCoeff = isMagic ? 0.008 : (isRare ? 0.012 : 0.015);
     } else {
-      // 第二周：14天窗口，必须很严格
-      // 数据：0.0005→0.8%, 0.00065→0.7%  目标4%，尝试0.00075
-      baseCoeff = isMagic ? 0.0005 : (isRare ? 0.00075 : 0.001);
+      // 第二周：14天窗口
+      // 0.0005→0.7%，需要向上调到4%
+      baseCoeff = isMagic ? 0.0004 : (isRare ? 0.0005 : 0.001);
     }
 
     // 需要多张的卡，后续系数递减
@@ -376,9 +376,10 @@ export async function solveCoefficientsAsync(
   let week1Coeffs = initializeCoefficients(week1Needs, week1Deadline, targetRate);
   let week2Coeffs = initializeCoefficients(week2Needs, week2Deadline, targetRate);
 
+  // 60次迭代，第一周能收敛
   const maxIterations = 60;
-  const tolerance = 0.3;
-  let learningRate = 0.8;
+  const tolerance = 0.5;
+  let learningRate = 0.5;
   let bestError = Infinity;
   let bestCoeffs = {
     week1: JSON.parse(JSON.stringify(week1Coeffs)) as Record<string, CardCoefficients>,
@@ -462,29 +463,36 @@ export async function solveCoefficientsAsync(
       }
     }
 
-    const adjustCoefficients = (coeffs: CardCoefficients, error: number) => {
+    const adjustCoefficients = (coeffs: CardCoefficients, error: number, isWeek2Flag: boolean) => {
       for (let i = 1; i < coeffs.length; i++) {
         if (error > 0) {
+          // 中奖率太高（如30% vs 4%），大幅降低系数
           const ratio = error / targetRate;
-          const factor = Math.pow(0.1, ratio * learningRate);
+          const factor = Math.pow(0.2, ratio * learningRate * 0.5);
           coeffs[i] *= factor;
         } else {
-          const ratio = Math.abs(error) / targetRate;
-          const factor = Math.pow(1.2, ratio * learningRate);
+          // 中奖率太低（如0.7% vs 4%），需要大幅提高系数！
+          const ratio = Math.abs(error) / targetRate;  // 如 3.3/4 = 0.825
+          // 激进提升：1.5^0.825 ≈ 1.4，即40%提升
+          const factor = Math.min(2.5, Math.pow(1.5, ratio * learningRate));
           coeffs[i] *= factor;
+          // 第二周从0.7%起步时，前几轮可以更激进
+          if (isWeek2Flag && ratio > 0.5) {
+            coeffs[i] *= 1.3; // 额外30%提升
+          }
         }
-        coeffs[i] = Math.max(0.000001, Math.min(0.5, coeffs[i]));
+        coeffs[i] = Math.max(0.00001, Math.min(0.3, coeffs[i]));
       }
       for (let i = 1; i < coeffs.length; i++) {
-        coeffs[i] = Math.min(coeffs[i], coeffs[i - 1] * 0.95);
+        coeffs[i] = Math.min(coeffs[i], coeffs[i - 1] * 0.9);
       }
     };
 
     for (const [, coeffs] of Object.entries(week1Coeffs)) {
-      adjustCoefficients(coeffs, error1);
+      adjustCoefficients(coeffs, error1, false);
     }
     for (const [, coeffs] of Object.entries(week2Coeffs)) {
-      adjustCoefficients(coeffs, error2);
+      adjustCoefficients(coeffs, error2, true);
     }
 
     if (iter > 2 && totalError > bestError * 1.1) {
