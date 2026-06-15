@@ -363,13 +363,15 @@ function calculateFullCollectionRate(
         pRaw[card] = getSingleP(ct, dayType, isLucky);
       }
 
-      // 应用降权
+      // 应用降权：达到需求数量后才降权
       const pS = { ...pRaw };
       for (const card of combo1Cards) {
-        if (bag[card] >= 1) pS[card] *= coeff1;
+        const need = cardNeeds[card] || 1;
+        if (bag[card] >= need) pS[card] *= coeff1;
       }
       for (const card of combo2Cards) {
-        if (bag[card] >= 1) pS[card] *= coeff2;
+        const need = cardNeeds[card] || 1;
+        if (bag[card] >= need) pS[card] *= coeff2;
       }
 
       // 轮盘赌
