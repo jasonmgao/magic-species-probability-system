@@ -100,15 +100,15 @@ function getCoeffForMissing(coeffs: ComboCoefficients, missing: number): number 
   return 1.0; // 默认100%
 }
 
-// 搜索范围
-const COEFF_RANGES = [0.01, 0.02, 0.03, 0.05, 0.08, 0.12, 0.18, 0.25, 0.35, 0.50];
+// 搜索范围：更严格的范围（1%-15%）
+const COEFF_RANGES = [0.005, 0.008, 0.01, 0.015, 0.02, 0.03, 0.05, 0.08, 0.12, 0.15];
 
 /**
  * 生成所有系数组合
+ * 原则：缺卡越少，系数越严格（越小）
+ * 例如3张卡：缺3=100%，缺2=10%，缺1=2%
  */
 function* generateCoeffCombos(totalNeed: number): Generator<ComboCoefficients> {
-  // 缺N张固定100%，其他可变
-  // 例如3张卡：缺3=100%，缺2和缺1可变
   const variableLevels = totalNeed - 1;
 
   if (variableLevels <= 0) {
@@ -116,16 +116,15 @@ function* generateCoeffCombos(totalNeed: number): Generator<ComboCoefficients> {
     return;
   }
 
-  // 为简化，固定比例关系：缺k张的系数 = 缺(k+1)张系数 × ratio
   for (const baseCoeff of COEFF_RANGES) {
     const coeffs: ComboCoefficients = {};
     coeffs[`missing${totalNeed}`] = 1.0; // 缺最多时100%
 
-    // 其他层级按比例递减
+    // 缺卡越少，系数越小（更严格）
     for (let i = totalNeed - 1; i >= 1; i--) {
-      // 缺1张时系数最小，缺N-1张时接近baseCoeff
-      const ratio = i / (totalNeed - 1);
-      coeffs[`missing${i}`] = baseCoeff * ratio;
+      // 指数递减：缺卡越少，系数越接近于0
+      const level = totalNeed - i; // 1, 2, ...
+      coeffs[`missing${i}`] = baseCoeff * Math.pow(0.4, level - 1);
     }
     yield coeffs;
   }
