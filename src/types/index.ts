@@ -63,11 +63,9 @@ export interface MissingCountCoeffs {
   [cardId: string]: number;
 }
 
-// 每套组合的系数
+// 每套组合的系数 - 支持可变数量
 export interface ComboCoeffs {
-  missing3: number;  // 缺3张时（持有0张）
-  missing2: number;  // 缺2张时（持有1张）
-  missing1: number;  // 缺1张时（持有2张）
+  [key: string]: number;  // missingN: 缺N张时的系数
 }
 
 /**
@@ -75,11 +73,7 @@ export interface ComboCoeffs {
  */
 export interface CoefficientResult {
   // 按缺卡数量划分的系数
-  byMissingCount: {
-    missing3: MissingCountCoeffs;  // 缺3张时的系数
-    missing2: MissingCountCoeffs;  // 缺2张时的系数
-    missing1: MissingCountCoeffs;  // 缺1张时的系数
-  };
+  byMissingCount: Record<string, MissingCountCoeffs>;
   // 完整系数表（每张卡持有1张时的降权系数）
   allCoefficients: Record<string, number>;
   // 每套组合的系数

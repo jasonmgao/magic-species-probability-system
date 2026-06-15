@@ -367,9 +367,15 @@ export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps
                     style={{ marginBottom: 16 }}
                   />
 
-                  {/* 按套显示系数 */}
+                  {/* 按套显示系数 - 支持可变数量 */}
                   {combinations.map((combo, idx) => {
-                    const coeffs = result.comboCoeffs?.[combo.name] || { missing3: 1.0, missing2: 0.02, missing1: 0.01 };
+                    const coeffs = result.comboCoeffs?.[combo.name] || {};
+                    const totalNeed = combo.requirements.reduce((sum, r) => sum + r.count, 0);
+                    // 获取所有系数键，按数字排序
+                    const coeffKeys = Object.keys(coeffs)
+                      .filter(k => k.startsWith('missing'))
+                      .sort((a, b) => parseInt(b.replace('missing', '')) - parseInt(a.replace('missing', '')));
+
                     return (
                       <div
                         key={combo.name}
@@ -381,18 +387,28 @@ export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps
                         }}
                       >
                         <Text strong style={{ color: idx === 0 ? '#52c41a' : '#1890ff', fontSize: 16 }}>
-                          第{idx + 1}套组合：{combo.requirements.map(r => `${r.cardId}×${r.count}`).join(' + ')}
+                          第{idx + 1}套组合（共需{totalNeed}张）：{combo.requirements.map(r => `${r.cardId}×${r.count}`).join(' + ')}
+                          <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
+                            第{idx === 0 ? 7 : 14}天截止
+                          </Text>
                         </Text>
                         <div style={{ marginTop: 12, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                          <Tag color="success" style={{ fontSize: 14, padding: '4px 12px' }}>
-                            缺3张（0张）: {(coeffs.missing3 * 100).toFixed(0)}%
-                          </Tag>
-                          <Tag color="warning" style={{ fontSize: 14, padding: '4px 12px' }}>
-                            缺2张（1张）: {(coeffs.missing2 * 100).toFixed(2)}%
-                          </Tag>
-                          <Tag color="error" style={{ fontSize: 14, padding: '4px 12px' }}>
-                            缺1张（2张）: {(coeffs.missing1 * 100).toFixed(3)}%
-                          </Tag>
+                          {coeffKeys.map((key, i) => {
+                            const missing = parseInt(key.replace('missing', ''));
+                            const value = coeffs[key];
+                            const held = totalNeed - missing;
+                            const isFull = i === 0; // 第一个（缺最多）是100%
+
+                            return (
+                              <Tag
+                                key={key}
+                                color={isFull ? 'success' : i === coeffKeys.length - 1 ? 'error' : 'warning'}
+                                style={{ fontSize: 14, padding: '4px 12px' }}
+                              >
+                                缺{missing}张（持有{held}张）: {(value * 100).toFixed(isFull ? 0 : 2)}%
+                              </Tag>
+                            );
+                          })}
                         </div>
                       </div>
                     );
