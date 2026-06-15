@@ -6,7 +6,7 @@ import { useState, useCallback } from 'react';
 import { Row, Col, Card as AntCard, Button, Space, Typography, message, Progress, Table, Tag, InputNumber, Select } from 'antd';
 import { CalculatorOutlined, SettingOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { Combination, SingleStateResult } from '@/types';
-import { runFullSimulation, BACKPACK_STATES } from '@/services/simulationEngine';
+import { runFullSimulationAsync, BACKPACK_STATES } from '@/services/simulationEngine';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -113,7 +113,7 @@ export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps
   }, []);
 
   // 运行模拟
-  const runSimulation = useCallback(() => {
+  const runSimulation = useCallback(async () => {
     if (combinations.length === 0) {
       message.error('请至少配置一个组合');
       return;
@@ -132,32 +132,24 @@ export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps
     setResults([]);
     setBestState(null);
 
-    // 模拟进度更新
-    const updateProgress = () => {
-      const interval = setInterval(() => {
-        setProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(interval);
-            return 90;
-          }
-          return prev + 10;
-        });
-      }, 200);
-      return interval;
-    };
+    try {
+      const result = await runFullSimulationAsync(
+        { combinations },
+        4.0,
+        5000,
+        (completed, total) => {
+          setProgress((completed / total) * 100);
+        }
+      );
 
-    const interval = updateProgress();
-
-    // 使用setTimeout让UI更新
-    setTimeout(() => {
-      const result = runFullSimulation({ combinations }, 4.0, 15000);
-
-      clearInterval(interval);
-      setProgress(100);
       setResults(result.stateResults);
       setBestState(result.bestState);
+      message.success('模拟完成！');
+    } catch (error) {
+      message.error('模拟失败');
+    } finally {
       setIsCalculating(false);
-    }, 100);
+    }
   }, [combinations]);
 
   // 表格列
