@@ -394,10 +394,10 @@ export async function solveCoefficientsAsync(
 
   // 自定义第二周搜索（需要固定第一周系数）
   const w2Needs = countCardNeeds(setup.week2.cards);
-  // 大幅向下调整初始范围 - 14天3张C无降权期望~3.9张，完成率极高
-  // 要让完成率=4%，系数可能需要极低（1e-5或更低）
-  let low = 1e-6;  // 1e-6 = 0.000001
-  let high = 0.001; // 从0.001开始往下找
+  // ⚠️ 关键调整：初始范围必须更低！
+  // 根据用户反馈，1e-6还是导致29.7%，需要降到1e-8或更低
+  let low = 1e-9;  // 1e-9 = 0.000000001 (比之前的1e-6低1000倍)
+  let high = 1e-5; // 从0.00001开始
 
   // 立即回调显示开始第二周搜索
   if (onProgress) {
