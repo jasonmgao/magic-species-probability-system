@@ -455,31 +455,50 @@ export async function solveCoefficientsAsync(
         }
       }
     }
-    if (error1 > 15) {
-      for (const [, coeffs] of Object.entries(week1Coeffs)) {
+    // 🔥 暴力下降：第二周>20%时直接除以10！
+    if (error2 > 20) {
+      for (const [, coeffs] of Object.entries(week2Coeffs)) {
         for (let i = 1; i < coeffs.length; i++) {
-          coeffs[i] = Math.max(0.000001, coeffs[i] * 0.05);
+          coeffs[i] = Math.max(0.000001, coeffs[i] * 0.1);  // 除以10！
         }
       }
+      // 第一周也检查
+      if (error1 > 20) {
+        for (const [, coeffs] of Object.entries(week1Coeffs)) {
+          for (let i = 1; i < coeffs.length; i++) {
+            coeffs[i] = Math.max(0.000001, coeffs[i] * 0.1);
+          }
+        }
+      }
+      // 跳过正常调整，这轮只做暴力降权
+      if (onProgress) {
+        onProgress({
+          iteration: iter + 1,
+          totalIterations: maxIterations,
+          week1Rate: result.week1Rate,
+          week2Rate: result.week2Rate,
+          error: totalError,
+          isConverged: false,
+        });
+      }
+      await new Promise(r => setTimeout(r, 0));
+      continue;
     }
 
     const adjustCoefficients = (coeffs: CardCoefficients, error: number, _isWeek2Flag: boolean) => {
       for (let i = 1; i < coeffs.length; i++) {
         if (error > 0) {
-          // 中奖率太高（如20% vs 4%），需要激进下降！
-          // ratio = 16/4 = 4，需要大幅下降
+          // 正常误差用温和下降
           const ratio = error / targetRate;
-          // 0.05^4 = 0.000006，但限制在0.2作为最小factor
-          const factor = Math.max(0.2, Math.pow(0.05, ratio * learningRate));
+          const factor = Math.max(0.7, Math.pow(0.5, ratio));
           coeffs[i] *= factor;
         } else {
           // 中奖率太低，适度提升
           const ratio = Math.abs(error) / targetRate;
-          const factor = Math.min(2.0, Math.pow(1.4, ratio * learningRate));
+          const factor = Math.min(1.5, Math.pow(1.3, ratio));
           coeffs[i] *= factor;
         }
-        // 确保系数不会降到太低或太高
-        coeffs[i] = Math.max(0.00001, Math.min(0.1, coeffs[i]));
+        coeffs[i] = Math.max(0.000001, Math.min(0.5, coeffs[i]));
       }
       for (let i = 1; i < coeffs.length; i++) {
         coeffs[i] = Math.min(coeffs[i], coeffs[i - 1] * 0.9);
