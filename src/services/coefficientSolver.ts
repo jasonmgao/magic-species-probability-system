@@ -122,30 +122,41 @@ function calculateInitialCoefficient(
 }
 
 /**
- * 使用数学反推的初始化
+ * 使用经验值初始化 - 根据deadline直接设置
+ * 基于实际测试数据调整
  */
 function initializeCoefficients(
   needs: Map<string, number>,
-  totalSlots: number,
   deadline: number,
-  targetRate: number
+  _targetRate: number
 ): Record<string, CardCoefficients> {
   const result: Record<string, CardCoefficients> = {};
-  const coeffCount = totalSlots;
 
   for (const [cardId, needCount] of needs.entries()) {
     const coeffs: CardCoefficients = [1.0];
 
-    // 计算这张卡的基础系数
-    const baseCoeff = calculateInitialCoefficient(cardId, needCount, totalSlots, deadline, targetRate);
+    // 根据天数和卡的稀有度设置经验值
+    // 7天窗口： coeff[1] ≈ 0.01
+    // 14天窗口：coeff[1] ≈ 0.0006 (根据0.0005→0.8%, 希望到4%稍微提高)
+    const isRare = ['B', 'C', 'D', 'E'].includes(cardId);
+    const isMagic = cardId === 'A';
 
-    for (let i = 1; i < coeffCount; i++) {
-      // 多张同卡时，系数递减
-      // 第 2 张用 baseCoeff，第 3 张用 baseCoeff * 0.5，以此类推
-      const decay = Math.pow(0.5, i - 1);
-      const newVal = baseCoeff * decay;
-      coeffs.push(Math.max(0.00001, newVal));
+    let baseCoeff: number;
+    if (deadline <= 7) {
+      // 第一周：7天窗口，相对宽松
+      baseCoeff = isMagic ? 0.008 : (isRare ? 0.012 : 0.015);
+    } else {
+      // 第二周：14天窗口，必须很严格
+      // 测试数据：0.0005 → 0.8%, 要 → 4%，尝试 0.00065
+      baseCoeff = isMagic ? 0.0004 : (isRare ? 0.00065 : 0.001);
     }
+
+    // 需要多张的卡，后续系数递减
+    for (let i = 1; i < needCount; i++) {
+      const decay = Math.pow(0.4, i - 1);
+      coeffs.push(Math.max(0.00001, baseCoeff * decay));
+    }
+
     result[cardId] = coeffs;
   }
   return result;
@@ -361,13 +372,13 @@ export async function solveCoefficientsAsync(
   const week1Deadline = setup.week1.deadline;
   const week2Deadline = setup.week2.deadline;
 
-  // 🔢 使用数学公式计算初始系数
-  let week1Coeffs = initializeCoefficients(week1Needs, week1Slots, week1Deadline, targetRate);
-  let week2Coeffs = initializeCoefficients(week2Needs, week2Slots, week2Deadline, targetRate);
+  // 使用经验值初始化
+  let week1Coeffs = initializeCoefficients(week1Needs, week1Deadline, targetRate);
+  let week2Coeffs = initializeCoefficients(week2Needs, week2Deadline, targetRate);
 
-  const maxIterations = 40;
-  const tolerance = 0.5;
-  let learningRate = 0.5;
+  const maxIterations = 60;
+  const tolerance = 0.3;
+  let learningRate = 0.8;
   let bestError = Infinity;
   let bestCoeffs = {
     week1: JSON.parse(JSON.stringify(week1Coeffs)) as Record<string, CardCoefficients>,
