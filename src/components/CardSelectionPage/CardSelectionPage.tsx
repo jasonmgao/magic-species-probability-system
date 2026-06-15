@@ -435,53 +435,6 @@ export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps
                   />
                 </TabPane>
 
-                {/* 概率配置表 */}
-                <TabPane
-                  tab={<span><TableOutlined /> 概率配置表</span>}
-                  key="tables"
-                >
-                  {probTables && (
-                    <>
-                      <Title level={5}>基础概率表</Title>
-                      <Table
-                        size="small"
-                        dataSource={probTables.baseProbTable}
-                        pagination={false}
-                        columns={[
-                          { title: '卡片', dataIndex: 'card', width: 80 },
-                          { title: '稀有度', dataIndex: 'rarity' },
-                          { title: '基础概率', dataIndex: 'baseProb' },
-                          {
-                            title: '是否组合卡',
-                            dataIndex: 'isInCombo',
-                            render: (v) => v ? <Tag color="blue">是</Tag> : <Tag>否</Tag>
-                          },
-                        ]}
-                        style={{ marginBottom: 24 }}
-                      />
-
-                      <Title level={5}>降权系数表</Title>
-                      <Table
-                        size="small"
-                        dataSource={probTables.coefficientTable}
-                        pagination={false}
-                        columns={[
-                          { title: '卡片', dataIndex: 'card', width: 80 },
-                          {
-                            title: '类型',
-                            dataIndex: 'isComboCard',
-                            render: (v) => v ? <Tag color="blue">组合卡</Tag> : <Tag>填充卡</Tag>
-                          },
-                          { title: '持有0张', dataIndex: 'coeff0' },
-                          { title: '持有1张', dataIndex: 'coeff1' },
-                          { title: '持有2张', dataIndex: 'coeff2' },
-                          { title: '说明', dataIndex: 'description' },
-                        ]}
-                      />
-                    </>
-                  )}
-                </TabPane>
-
                 {/* 案例 */}
                 <TabPane
                   tab={<span><QuestionCircleOutlined /> 池子状态案例</span>}

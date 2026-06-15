@@ -214,6 +214,10 @@ function runFastSim(
   let w1Sum = 0, w2Sum = 0;
   let totalWeight = 0;
 
+  // 设置卡片需求数量
+  setCardNeeds(combo1);
+  setCardNeeds(combo2);
+
   const combo1Cards = combo1.requirements.map(r => r.cardId);
   const combo2Cards = combo2.requirements.map(r => r.cardId);
   const aType = getCardType(combo1Cards[0]);
@@ -255,9 +259,9 @@ function runFastSim(
         const isCLucky = (dayType === ct && luckyC[week] === 0);
         if (isCLucky) luckyC[week] = 1;
 
-        const m1 = calculateMissingCount(combo1, bag);
         const m2 = calculateMissingCount(combo2, bag);
-        const coeff1 = m1 > 0 ? getCoeffForMissing(coeffs1, m1) : 0.001;
+        // 第二周：第一套恢复正常概率(100%)，第二套用系数
+        const coeff1 = 1.0;
         const coeff2 = getCoeffForMissing(coeffs2, m2);
 
         drawCards(combo1Cards, aType, dayType, isALucky, coeff1, bag);
@@ -282,10 +286,21 @@ function generateRandomSchedule(): string[] {
   return [...week1, ...week2];
 }
 
+// 需求数量映射
+const cardNeeds: Record<string, number> = {};
+
+function setCardNeeds(combo: Combination) {
+  for (const req of combo.requirements) {
+    cardNeeds[req.cardId] = req.count;
+  }
+}
+
 function drawCards(cards: string[], cardType: any, dayType: any, isLucky: boolean, coeff: number, bag: Record<string, number>) {
   for (const card of cards) {
     let p = getSingleP(cardType, dayType, isLucky);
-    if (bag[card] >= 1) p *= coeff;
+    const need = cardNeeds[card] || 1;
+    // 只卡超需求：已达到需求数量后应用降权
+    if (bag[card] >= need) p *= coeff;
     if (Math.random() < singleToDay(p)) {
       bag[card] = (bag[card] || 0) + 1;
     }
@@ -309,6 +324,10 @@ function calculateFullCollectionRate(
   coeffs2: ComboCoefficients,
   trials: number
 ): number {
+  // 设置卡片需求数量
+  setCardNeeds(combo1);
+  setCardNeeds(combo2);
+
   const combo1Cards = combo1.requirements.map(r => r.cardId);
   const combo2Cards = combo2.requirements.map(r => r.cardId);
   const aType = getCardType(combo1Cards[0]);
