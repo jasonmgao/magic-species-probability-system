@@ -121,7 +121,10 @@ function drawOneCard(
       if (!cardCoeffs || holdCount === 0) {
         weightedProbs[card] = rawProbs[card];
       } else {
-        const coeffIndex = holdCount - 1;
+        // 修正索引：holdCount 张 → 继续抽需要第 (holdCount+1) 张
+        // 所以索引直接用 holdCount（不是 holdCount-1）
+        // 例如：已有 1 张，coeffIndex=1 控制第 2 张的掉落
+        const coeffIndex = holdCount;
         if (coeffIndex >= cardCoeffs.length) {
           weightedProbs[card] = 0;
         } else {
