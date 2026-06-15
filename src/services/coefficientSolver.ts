@@ -377,6 +377,10 @@ export async function solveCoefficientsAsync(
   let week1Coeffs = initializeCoefficients(week1Needs, week1Deadline, targetRate);
   let week2Coeffs = initializeCoefficients(week2Needs, week2Deadline, targetRate);
 
+  // 调试：打印初始化后的系数
+  console.log('Week1 coeffs:', week1Coeffs);
+  console.log('Week2 coeffs:', week2Coeffs);
+
   const maxIterations = 60;
   const tolerance = 0.3;
   let learningRate = 0.8;
