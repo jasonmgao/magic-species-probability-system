@@ -1,185 +1,256 @@
 /**
- * 蒙特卡洛模拟引擎（新版）
- * 使用反向求解找到合适的降权系数
+ * 🎲 蒙特卡洛模拟引擎
+ * 适配新的反向求解架构
  */
 
-import type {
-  CardSetup,
-  CoefficientResult,
-} from '@/types';
-import { solveCoefficients, generateCoefficientReport, ALL_CARDS } from './coefficientSolver';
+import type { CardSetup, CoefficientResult, SolverProgress, CaseData, WeeklyCombo } from '@/types';
+import type { SolverResult } from './coefficientSolver';
+import {
+  solveCoefficients,
+  solveCoefficientsQuick,
+  generateCoefficientReport,
+  ALL_CARDS,
+  getCardType,
+  getBaseProb,
+} from './coefficientSolver';
 
-export { ALL_CARDS };
+export { ALL_CARDS, getCardType, getBaseProb };
 
 /**
- * 运行完整模拟并求解系数
- * @param setup 卡组配置
- * @param targetRate 目标中奖率（默认4%）
- * @param onProgress 进度回调
- * @returns 系数求解结果
+ * 统计卡组中每张卡的需求量
+ */
+function countCardNeeds(cards: string[]): Map<string, number> {
+  const needs = new Map<string, number>();
+  for (const card of cards) {
+    needs.set(card, (needs.get(card) || 0) + 1);
+  }
+  return needs;
+}
+
+/**
+ * 运行完整模拟（异步，支持进度回调）
  */
 export async function runFullSimulationAsync(
   setup: CardSetup,
   targetRate: number = 4.0,
   _trials?: number,
-  onProgress?: (completed: number, total: number) => void
+  onProgress?: (progress: SolverProgress) => void
 ): Promise<CoefficientResult> {
+  return new Promise((resolve, reject) => {
+    try {
+      const solverResult = solveCoefficients(
+        setup,
+        targetRate,
+        0.1,     // tolerance
+        50,      // maxIterations
+        30000,   // trialsPerIteration
+        onProgress
+      );
 
-  // 模拟进度
-  const totalSteps = 100;
-
-  return new Promise((resolve) => {
-    let step = 0;
-
-    const runProgress = () => {
-      step++;
-      if (onProgress) {
-        onProgress(step, totalSteps);
-      }
-      if (step < totalSteps) {
-        setTimeout(runProgress, 20);
-      }
-    };
-
-    runProgress();
-
-    // 执行求解
-    setTimeout(() => {
-      const solverResult = solveCoefficients(setup, targetRate, 3000);
-      const report = generateCoefficientReport(setup, solverResult);
+      const report = generateCoefficientReport(solverResult);
       resolve(report);
-    }, 100);
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+/**
+ * 快速模拟（较少迭代）
+ */
+export async function runQuickSimulation(
+  setup: CardSetup,
+  targetRate: number = 4.0,
+  onProgress?: (progress: SolverProgress) => void
+): Promise<CoefficientResult> {
+  return new Promise((resolve, reject) => {
+    try {
+      const solverResult = solveCoefficientsQuick(setup, targetRate, onProgress);
+      const report = generateCoefficientReport(solverResult);
+      resolve(report);
+    } catch (error) {
+      reject(error);
+    }
   });
 }
 
 /**
  * 生成示例案例
+ * 根据系数结果生成不同背包状态下的案例
  */
 export function generateCases(
   setup: CardSetup,
   coefficientResult: CoefficientResult
-): Array<{
-  name: string;
-  description: string;
-  initialBag: Record<string, number>;
-  expectedSuccess: string;
-}> {
-  const cases: Array<{
-    name: string;
-    description: string;
-    initialBag: Record<string, number>;
-    expectedSuccess: string;
-  }> = [];
+): CaseData[] {
+  const cases: CaseData[] = [];
 
-  const firstCombo = setup.combinations[0];
-  const secondCombo = setup.combinations[1];
+  // 统计两周的卡牌需求
+  const week1Needs = countCardNeeds(setup.week1.cards);
+  const week2Needs = countCardNeeds(setup.week2.cards);
 
-  // 情况1：全新用户
+  // 案例 1：全新用户（背包为空）
   cases.push({
     name: '全新用户',
-    description: '背包为空（0张组合卡）',
+    description: '背包为空，刚开始游戏',
     initialBag: {},
-    expectedSuccess: `约 ${coefficientResult.combinationRates[firstCombo?.name] ?? 4}%`,
+    dayType: 'COMMON',
+    luckyCard: null,
+    expectedSuccess: '第一周概率约 4%，第二周概率约 4%',
   });
 
-  // 情况2：第一套缺2张
-  if (firstCombo && firstCombo.requirements.length >= 2) {
-    const partialBag: Record<string, number> = {};
-    const firstCard = firstCombo.requirements[0].cardId;
-    partialBag[firstCard] = 1;
+  // 案例 2：第一周进行中（持有部分第一周的卡）
+  const week1CardList = Array.from(week1Needs.entries());
+  if (week1CardList.length > 0) {
+    const [firstCard, firstNeed] = week1CardList[0];
+    const midBag: Record<string, number> = { [firstCard]: 1 };
+    const firstCardCoeffs = coefficientResult.week1[firstCard];
+    const coeff1 = firstCardCoeffs ? firstCardCoeffs[1] : 0.05;
+
     cases.push({
-      name: '第一套缺2张',
-      description: `已持有 ${firstCard}×1，触发降权系数 ${((coefficientResult.allCoefficients[firstCard] ?? 0.02) * 100).toFixed(1)}%`,
-      initialBag: partialBag,
-      expectedSuccess: '概率降低（受系数影响）',
+      name: '第一周进行中',
+      description: `已持有 ${firstCard}×1，持有 2 张时降权系数 ${(coeff1 * 100).toFixed(2)}%`,
+      initialBag: midBag,
+      dayType: 'RARE',
+      luckyCard: firstCard,
+      expectedSuccess: '降权生效，后续抽卡概率降低',
     });
   }
 
-  // 情况3：第二套进行中
-  if (secondCombo) {
+  // 案例 3：第一周接近完成
+  const almostDoneBag: Record<string, number> = {};
+  for (const [card, need] of week1Needs.entries()) {
+    almostDoneBag[card] = Math.max(1, need - 1);
+  }
+  cases.push({
+    name: '第一周差 1 张',
+    description: '持有大部分第一周的卡，接近完成',
+    initialBag: almostDoneBag,
+    dayType: 'MAGIC',
+    luckyCard: 'A',
+    expectedSuccess: '持有越多，降权越严格',
+  });
+
+  // 案例 4：第二周进行中
+  const week2CardList = Array.from(week2Needs.entries());
+  if (week2CardList.length > 0) {
+    const [w2FirstCard] = week2CardList[0];
+    const w2MidBag: Record<string, number> = { [w2FirstCard]: 1 };
+    const w2Coeffs = coefficientResult.week2[w2FirstCard];
+    const w2Coeff1 = w2Coeffs ? w2Coeffs[1] : 0.03;
+
     cases.push({
-      name: '第二周状态',
-      description: `目标：${secondCombo.requirements.map(r => `${r.cardId}×${r.count}`).join(' + ')}`,
-      initialBag: {},
-      expectedSuccess: `约 ${coefficientResult.combinationRates[secondCombo?.name] ?? 4}%`,
+      name: '第二周进行中',
+      description: `已持有 ${w2FirstCard}×1，持有 2 张时降权系数 ${(w2Coeff1 * 100).toFixed(2)}%`,
+      initialBag: w2MidBag,
+      dayType: 'RARE',
+      luckyCard: w2FirstCard,
+      expectedSuccess: '第二周系数通常比第一周更严格',
     });
   }
 
-  // 情况4：接近完成
-  if (firstCombo) {
-    const nearBag: Record<string, number> = {};
-    for (const req of firstCombo.requirements) {
-      nearBag[req.cardId] = Math.max(0, req.count - 1);
-    }
-    cases.push({
-      name: '接近完成',
-      description: '第一套只差1张（持有2张时系数=0，无法获得）',
-      initialBag: nearBag,
-      expectedSuccess: '极低（需等待下周重置）',
-    });
+  // 案例 5：接近全收集
+  const nearFullBag: Record<string, number> = {};
+  for (const card of ALL_CARDS.slice(0, 8)) {
+    nearFullBag[card] = 1;
   }
+  cases.push({
+    name: '接近全收集',
+    description: '已持有 8 张不同的卡',
+    initialBag: nearFullBag,
+    dayType: 'COMMON',
+    luckyCard: null,
+    expectedSuccess: `14天全收集率约 ${coefficientResult.fullCollectionRate.toFixed(2)}%`,
+  });
 
   return cases;
 }
 
 /**
- * 生成概率配置表
+ * 生成概率配置表（用于 UI 展示）
  */
 export function generateProbabilityTables(
-  setup: CardSetup,
+  _setup: CardSetup,
   coefficientResult: CoefficientResult
 ) {
-  const { allCoefficients, combinationRates, fullCollectionRate } = coefficientResult;
-
-  // 收集组合中涉及的卡
-  const comboCards = new Set<string>();
-  for (const combo of setup.combinations) {
-    for (const req of combo.requirements) {
-      comboCards.add(req.cardId);
-    }
-  }
-
   // 基础概率表
   const baseProbTable = ALL_CARDS.map(card => {
-    const baseProb = card === 'A' ? 2 : ['B', 'C', 'D', 'E'].includes(card) ? 7 : 14;
+    const baseProb = getBaseProb(card);
     return {
       card,
-      rarity: card === 'A' ? '神奇' : ['B', 'C', 'D', 'E'].includes(card) ? '稀有' : '普通',
-      baseProb: `${baseProb}%`,
-      isInCombo: comboCards.has(card),
+      rarity: getCardType(card),
+      rarityLabel: card === 'A' ? '神奇' : ['B', 'C', 'D', 'E'].includes(card) ? '稀有' : '普通',
+      baseProb: `${baseProb.toFixed(0)}%`,
     };
   });
 
-  // 降权系数表
-  const coefficientTable = ALL_CARDS.map(card => {
-    const coeff = allCoefficients[card];
-    const isComboCard = comboCards.has(card);
-
-    if (!isComboCard) {
-      return {
-        card,
-        isComboCard: false,
-        coeff0: '100%',
-        coeff1: '0%',
-        coeff2: 'N/A',
-        description: '填充卡，只能获得1张',
-      };
-    }
-
+  // 第一周降权系数表
+  const week1CoefficientTable = Object.entries(coefficientResult.week1).map(([card, coeffs]) => {
+    const needs = coeffs.length + 1;  // 需求数量 = 系数数量 + 1（因为第1张固定）
     return {
       card,
-      isComboCard: true,
-      coeff0: '100%',
-      coeff1: coeff ? `${(coeff * 100).toFixed(2)}%` : '2.00%',
-      coeff2: '0%',
-      description: '组合卡，最多2张',
+      needs,
+      coeffs: coeffs.map((c, i) => ({
+        holdCount: i + 1,
+        value: c,
+        label: `持有 ${i + 1} 张`,
+      })),
+    };
+  });
+
+  // 第二周降权系数表
+  const week2CoefficientTable = Object.entries(coefficientResult.week2).map(([card, coeffs]) => {
+    const needs = coeffs.length + 1;
+    return {
+      card,
+      needs,
+      coeffs: coeffs.map((c, i) => ({
+        holdCount: i + 1,
+        value: c,
+        label: `持有 ${i + 1} 张`,
+      })),
     };
   });
 
   return {
     baseProbTable,
-    coefficientTable,
-    combinationRates,
-    fullCollectionRate,
+    week1CoefficientTable,
+    week2CoefficientTable,
+    week1Rate: coefficientResult.actualRates.week1,
+    week2Rate: coefficientResult.actualRates.week2,
+    fullCollectionRate: coefficientResult.fullCollectionRate,
+    converged: coefficientResult.converged,
+    iterations: coefficientResult.iterations,
   };
 }
+
+/**
+ * 验证求解结果
+ */
+export async function validateSolution(
+  _setup: CardSetup,
+  coefficientResult: CoefficientResult,
+): Promise<{
+  week1Rate: number;
+  week2Rate: number;
+  fullCollectionRate: number;
+  isValid: boolean;
+}> {
+  const week1Rate = coefficientResult.actualRates.week1;
+  const week2Rate = coefficientResult.actualRates.week2;
+  const fullRate = coefficientResult.fullCollectionRate;
+
+  // 验证：中奖率应在 3.5% - 4.5% 之间
+  const isValid = Math.abs(week1Rate - 4.0) < 0.5 && Math.abs(week2Rate - 4.0) < 0.5;
+
+  return {
+    week1Rate,
+    week2Rate,
+    fullCollectionRate: fullRate,
+    isValid,
+  };
+}
+
+/**
+ * 导出类型
+ */
+export type { SolverResult };

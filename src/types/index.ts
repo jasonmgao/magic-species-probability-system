@@ -1,89 +1,119 @@
+/**
+ * 🎴 神奇物种发卡概率系统 - 类型定义
+ * 反向求解降权系数（按持有数量分层）
+ */
+
 /** 卡片稀有度 */
 export type Rarity = 'MAGIC' | 'RARE' | 'COMMON';
 
+/** 日类型 */
+export type DayType = 'COMMON' | 'RARE' | 'MAGIC';
+
 /**
- * 组合定义（完全自由）
- * 3张卡，每张卡的数量任意配置
+ * 单周卡组配置
  */
-export interface Combination {
-  name: string;  // 组合名称
-  // 3张卡的需求 [卡ID, 需要数量]
-  requirements: Array<{ cardId: string; count: number }>;
-  deadline: number;  // 截止日期（第几天）
+export interface WeeklyCombo {
+  name: string;           // "第一周" / "第二周"
+  cards: string[];        // 卡牌列表，长度 2-5，可重复（如 ["A","A","B"]）
+  deadline: number;       // 截止时间（天）：第一周=7，第二周=14
 }
 
 /**
- * 卡组配置
+ * 完整卡组配置（两周）
  */
 export interface CardSetup {
-  combinations: Combination[];  // 多组组合（通常2套）
+  week1: WeeklyCombo;
+  week2: WeeklyCombo;
 }
 
 /**
- * 降权系数
+ * 降权系数：按持有数量分层
+ * 索引 0 = 持有 1 张时的系数（固定为 1.0）
+ * 索引 1 = 持有 2 张时的系数
+ * ...
+ * 持有 n+1 张以上时，概率 = 0（不再掉落）
  */
-export interface CoefficientSet {
-  [cardId: string]: number[];  // [0张系数, 1张系数, 2张系数, ...]
-}
-
-/**
- * 背包状态
- */
-export interface BackpackState {
-  state: string;
-  label: string;
-  description: string;
-  initialBag: Record<string, number>;
-}
-
-/**
- * 单个状态的模拟结果
- */
-export interface SingleStateResult {
-  state: string;
-  label: string;
-  description: string;
-  coefficients: CoefficientSet;
-  fullCollectionRate: number;
-  combinationRates: Record<string, number>;
-}
-
-/**
- * 完整模拟结果
- */
-export interface FullSimulationResult {
-  stateResults: SingleStateResult[];
-  bestState: SingleStateResult | null;
-}
-
-/**
- * 按缺卡数量划分的系数
- */
-export interface MissingCountCoeffs {
-  [cardId: string]: number;
-}
-
-// 每套组合的系数 - 支持可变数量
-export interface ComboCoeffs {
-  [key: string]: number;  // missingN: 缺N张时的系数
-}
+export type CardCoefficients = number[];  // [1.0, x, y, z, ...]
 
 /**
  * 系数求解结果
  */
 export interface CoefficientResult {
-  // 按缺卡数量划分的系数
-  byMissingCount: Record<string, MissingCountCoeffs>;
-  // 完整系数表（每张卡持有1张时的降权系数）
-  allCoefficients: Record<string, number>;
-  // 每套组合的系数
-  comboCoeffs: Record<string, ComboCoeffs>;
-  // 组合成功率（每组组合的中奖率）
-  combinationRates: Record<string, number>;
-  // 14天全收集率
+  /** 第一周每张卡的降权系数（按持有数量分层） */
+  week1: Record<string, CardCoefficients>;
+  /** 第二周每张卡的降权系数（按持有数量分层） */
+  week2: Record<string, CardCoefficients>;
+  /** 实际中奖率（验证结果） */
+  actualRates: {
+    week1: number;  // 第一周实际中奖率（应接近 4%）
+    week2: number;  // 第二周实际中奖率（应接近 4%）
+  };
+  /** 14 天全收集概率（集齐 10 张卡至少 1 张） */
   fullCollectionRate: number;
-  // 收敛状态
+  /** 是否收敛 */
   converged: boolean;
-  // 误差值
+  /** 迭代次数 */
+  iterations: number;
+  /** 最终误差（与目标 4% 的偏差） */
+  finalError: number;
+}
+
+/**
+ * 求解进度回调
+ */
+export interface SolverProgress {
+  iteration: number;
+  totalIterations: number;
+  week1Rate: number;
+  week2Rate: number;
   error: number;
+  isConverged: boolean;
+}
+
+/**
+ * 概率分布计算结果（用于展示）
+ */
+export interface ProbDistributionResult {
+  card: string;
+  rarity: string;
+  baseProb: number;
+  coefficient: number;
+  weightedProb: number;
+  normalizedProb: number;
+}
+
+/**
+ * 案例数据
+ */
+export interface CaseData {
+  name: string;
+  description: string;
+  initialBag: Record<string, number>;
+  dayType: DayType;
+  luckyCard: string | null;
+  expectedSuccess: string;
+  probabilities?: Record<string, number>;
+}
+
+/**
+ * 求解器详细结果（用于调试和分析）
+ */
+export interface SolverDetailedResult {
+  coefficients: Record<string, CardCoefficients>;
+  week1Rate: number;
+  week2Rate: number;
+  fullCollectionRate: number;
+  converged: boolean;
+  iterations: number;
+  finalError: number;
+  paramHistory: number[][];
+  targetRate: number;
+}
+
+/**
+ * 卡片配置（用于UI）
+ */
+export interface CardConfig {
+  cardId: string;
+  count: number;
 }
