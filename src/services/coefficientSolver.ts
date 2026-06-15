@@ -152,7 +152,7 @@ async function binarySearchCoeff(
 }
 
 /**
- * 模拟单个周的完成率
+ * 模拟单个周的完成率（分块执行避免阻塞）
  */
 async function simulateWeek(
   setup: CardSetup,
@@ -171,23 +171,37 @@ async function simulateWeek(
   };
 
   let completed = 0;
+  const allCards = new Set([...setup.week1.cards, ...setup.week2.cards]);
 
-  for (let t = 0; t < trials; t++) {
-    const bag: Record<string, number> = {};
-    const sched = generateSchedule().slice(0, deadline);
-    const luckySet = new Set<string>();
-    const allCards = new Set([...setup.week1.cards, ...setup.week2.cards]);
+  // 分块执行，每500次让出一次主线程
+  const chunkSize = 500;
+  const chunks = Math.ceil(trials / chunkSize);
+  const lastChunkSize = trials % chunkSize || chunkSize;
 
-    for (let d = 1; d <= deadline; d++) {
-      const dt = sched[d - 1];
-      const lc = getLuckyCard(dt, allCards, luckySet);
-      for (let i = 0; i < 4; i++) {
-        const c = drawOneCard(bag, setup, fullCoeffs, d, dt, lc);
-        bag[c] = (bag[c] || 0) + 1;
+  for (let chunk = 0; chunk < chunks; chunk++) {
+    const currentChunkSize = chunk === chunks - 1 ? lastChunkSize : chunkSize;
+
+    for (let t = 0; t < currentChunkSize; t++) {
+      const bag: Record<string, number> = {};
+      const sched = generateSchedule().slice(0, deadline);
+      const luckySet = new Set<string>();
+
+      for (let d = 1; d <= deadline; d++) {
+        const dt = sched[d - 1];
+        const lc = getLuckyCard(dt, allCards, luckySet);
+        for (let i = 0; i < 4; i++) {
+          const c = drawOneCard(bag, setup, fullCoeffs, d, dt, lc);
+          bag[c] = (bag[c] || 0) + 1;
+        }
       }
+
+      if (checkComboComplete(weekCombo, bag)) completed++;
     }
 
-    if (checkComboComplete(weekCombo, bag)) completed++;
+    // 让出主线程，允许UI更新
+    if (chunk < chunks - 1) {
+      await new Promise(r => setTimeout(r, 0));
+    }
   }
 
   return { rate: (completed / trials) * 100 };
@@ -369,38 +383,53 @@ export async function solveCoefficientsAsync(
 
   // 自定义第二周搜索（需要固定第一周系数）
   const w2Needs = countCardNeeds(setup.week2.cards);
-  let low = 0.00005;
-  let high = 0.01;
+  // 大幅向下调整初始范围 - 14天3张C无降权期望~3.9张，完成率极高
+  // 要让完成率=4%，系数可能需要极低（1e-5或更低）
+  let low = 1e-6;  // 1e-6 = 0.000001
+  let high = 0.001; // 从0.001开始往下找
 
-  // 初步范围测试（少量trial快速定位）
-  let testLow = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, low), 2000);
+  // 立即回调显示开始第二周搜索
+  if (onProgress) {
+    onProgress({
+      iteration: 2,
+      totalIterations: 10,
+      week1Rate: w1BestRate,
+      week2Rate: 0,
+      error: 100,
+      isConverged: false,
+    });
+  }
+
+  // 初步范围测试（更少的trial快速定位）
+  let testLow = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, low), 1500);
   await new Promise(r => setTimeout(r, 0));
-  let testHigh = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, high), 2000);
+  let testHigh = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, high), 1500);
   await new Promise(r => setTimeout(r, 0));
 
+  // 大幅扩展范围直到覆盖目标（最多5次）
   let w2AdjustAttempts = 0;
-  while (testLow.week2Rate > 4 && low > 1e-7 && w2AdjustAttempts < 3) {
-    low *= 0.5;
-    testLow = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, low), 2000);
+  while (testLow.week2Rate > 4.5 && low > 1e-8 && w2AdjustAttempts < 5) {
+    low *= 0.1;  // 大幅降低
+    testLow = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, low), 1500);
     await new Promise(r => setTimeout(r, 0));
     w2AdjustAttempts++;
   }
   w2AdjustAttempts = 0;
-  while (testHigh.week2Rate < 4 && high < 0.1 && w2AdjustAttempts < 3) {
+  while (testHigh.week2Rate < 3.5 && high < 0.1 && w2AdjustAttempts < 5) {
     high *= 2;
-    testHigh = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, high), 2000);
+    testHigh = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, high), 1500);
     await new Promise(r => setTimeout(r, 0));
     w2AdjustAttempts++;
   }
 
-  // 二分搜索第二周系数
-  let bestW2Coeff = (low + high) / 2;
+  // 二分搜索第二周系数（更多迭代+实时更新进度）
+  let bestW2Coeff = low;
   let bestW2Error = 100;
 
-  for (let iter = 0; iter < 6; iter++) {
+  for (let iter = 0; iter < 10; iter++) {  // 增加到10轮
     const mid = (low + high) / 2;
     const w2Coeffs = createUniformCoefficients(w2Needs, mid);
-    const res = await simulateBothWeeks(setup, w1Coeffs, w2Coeffs, 4000);
+    const res = await simulateBothWeeks(setup, w1Coeffs, w2Coeffs, 3000);
 
     const error = Math.abs(res.week2Rate - 4);
     if (error < bestW2Error) {
@@ -409,10 +438,11 @@ export async function solveCoefficientsAsync(
       w2BestRate = res.week2Rate;
     }
 
+    // 每轮都更新进度条
     if (onProgress) {
       onProgress({
-        iteration: 2,
-        totalIterations: 3,
+        iteration: 2 + iter,
+        totalIterations: 12,
         week1Rate: w1BestRate,
         week2Rate: res.week2Rate,
         error: (Math.abs(w1BestRate - 4) + error),
@@ -420,16 +450,23 @@ export async function solveCoefficientsAsync(
       });
     }
 
-    if (res.week2Rate > 4) {
-      high = mid;
+    if (res.week2Rate > 4.5) {
+      high = mid;  // 太高，系数要降
+    } else if (res.week2Rate < 3.5) {
+      low = mid;   // 太低，系数要升
     } else {
-      low = mid;
+      // 已经在3.5%-4.5%之间，很接近了
+      bestW2Error = error;
+      bestW2Coeff = mid;
+      w2BestRate = res.week2Rate;
+      break;
     }
 
     // 让出主线程
     await new Promise(r => setTimeout(r, 0));
 
-    if (bestW2Error < 0.5) break;
+    // 精度够就提前退出
+    if (bestW2Error < 0.3) break;
   }
 
   w2BestCoeff = bestW2Coeff;
@@ -461,7 +498,7 @@ export async function solveCoefficientsAsync(
 }
 
 /**
- * 模拟两周的完整游戏（用于最终验证）
+ * 模拟两周的完整游戏（用于最终验证，分块执行）
  */
 async function simulateBothWeeks(
   setup: CardSetup,
@@ -472,35 +509,49 @@ async function simulateBothWeeks(
   let w1 = 0, w2 = 0, fc = 0;
   const allCards = new Set([...setup.week1.cards, ...setup.week2.cards]);
 
-  for (let t = 0; t < trials; t++) {
-    // Week 1 simulation (7 days)
-    const bag1: Record<string, number> = {};
-    const sched1 = generateSchedule().slice(0, 7);
-    const lucky1 = new Set<string>();
-    for (let d = 1; d <= 7; d++) {
-      const dt = sched1[d - 1];
-      const lc = getLuckyCard(dt, allCards, lucky1);
-      for (let i = 0; i < 4; i++) {
-        const c = drawOneCard(bag1, setup, { week1: w1Coeffs, week2: w2Coeffs }, d, dt, lc);
-        bag1[c] = (bag1[c] || 0) + 1;
-      }
-    }
-    if (checkComboComplete(setup.week1, bag1)) w1++;
+  // 分块执行，每500次让出一次主线程
+  const chunkSize = 500;
+  const chunks = Math.ceil(trials / chunkSize);
+  const lastChunkSize = trials % chunkSize || chunkSize;
 
-    // Full 2 weeks simulation (14 days)
-    const bag2: Record<string, number> = {};
-    const sched2 = generateSchedule();
-    const lucky2a = new Set<string>(), lucky2b = new Set<string>();
-    for (let d = 1; d <= 14; d++) {
-      const dt = sched2[d - 1];
-      const lc = getLuckyCard(dt, allCards, d <= 7 ? lucky2a : lucky2b);
-      for (let i = 0; i < 4; i++) {
-        const c = drawOneCard(bag2, setup, { week1: w1Coeffs, week2: w2Coeffs }, d, dt, lc);
-        bag2[c] = (bag2[c] || 0) + 1;
+  for (let chunk = 0; chunk < chunks; chunk++) {
+    const currentChunkSize = chunk === chunks - 1 ? lastChunkSize : chunkSize;
+
+    for (let t = 0; t < currentChunkSize; t++) {
+      // Week 1 simulation (7 days)
+      const bag1: Record<string, number> = {};
+      const sched1 = generateSchedule().slice(0, 7);
+      const lucky1 = new Set<string>();
+      for (let d = 1; d <= 7; d++) {
+        const dt = sched1[d - 1];
+        const lc = getLuckyCard(dt, allCards, lucky1);
+        for (let i = 0; i < 4; i++) {
+          const c = drawOneCard(bag1, setup, { week1: w1Coeffs, week2: w2Coeffs }, d, dt, lc);
+          bag1[c] = (bag1[c] || 0) + 1;
+        }
       }
+      if (checkComboComplete(setup.week1, bag1)) w1++;
+
+      // Full 2 weeks simulation (14 days)
+      const bag2: Record<string, number> = {};
+      const sched2 = generateSchedule();
+      const lucky2a = new Set<string>(), lucky2b = new Set<string>();
+      for (let d = 1; d <= 14; d++) {
+        const dt = sched2[d - 1];
+        const lc = getLuckyCard(dt, allCards, d <= 7 ? lucky2a : lucky2b);
+        for (let i = 0; i < 4; i++) {
+          const c = drawOneCard(bag2, setup, { week1: w1Coeffs, week2: w2Coeffs }, d, dt, lc);
+          bag2[c] = (bag2[c] || 0) + 1;
+        }
+      }
+      if (checkComboComplete(setup.week2, bag2)) w2++;
+      if (checkFullCollection(bag2)) fc++;
     }
-    if (checkComboComplete(setup.week2, bag2)) w2++;
-    if (checkFullCollection(bag2)) fc++;
+
+    // 让出主线程
+    if (chunk < chunks - 1) {
+      await new Promise(r => setTimeout(r, 0));
+    }
   }
 
   return {
