@@ -83,35 +83,33 @@ async function binarySearchCoeff(
   let low = isWeek1 ? 0.001 : 0.0001;   // 下限
   let high = isWeek1 ? 0.1 : 0.01;       // 上限
 
-  // 先验证范围是否包含目标
+  // 先验证范围是否包含目标（少量trial快速定位）
   // 测试 low
   let coeffsLow = createUniformCoefficients(needs, low);
-  let resLow = await simulateWeek(
-    setup,
-    week,
-    coeffsLow,
-    6000
-  );
+  let resLow = await simulateWeek(setup, week, coeffsLow, 2000);
+  await new Promise(r => setTimeout(r, 0));
 
   // 测试 high
   let coeffsHigh = createUniformCoefficients(needs, high);
-  let resHigh = await simulateWeek(
-    setup,
-    week,
-    coeffsHigh,
-    6000
-  );
+  let resHigh = await simulateWeek(setup, week, coeffsHigh, 2000);
+  await new Promise(r => setTimeout(r, 0));
 
-  // 如果范围不对，扩展范围
-  while (resLow.rate > targetRate) {
+  // 如果范围不对，扩展范围（最多3次）
+  let adjustAttempts = 0;
+  while (resLow.rate > targetRate && adjustAttempts < 3) {
     low *= 0.5;
     coeffsLow = createUniformCoefficients(needs, low);
-    resLow = await simulateWeek(setup, week, coeffsLow, 4000);
+    resLow = await simulateWeek(setup, week, coeffsLow, 2000);
+    await new Promise(r => setTimeout(r, 0));
+    adjustAttempts++;
   }
-  while (resHigh.rate < targetRate) {
+  adjustAttempts = 0;
+  while (resHigh.rate < targetRate && adjustAttempts < 3) {
     high *= 2;
     coeffsHigh = createUniformCoefficients(needs, high);
-    resHigh = await simulateWeek(setup, week, coeffsHigh, 4000);
+    resHigh = await simulateWeek(setup, week, coeffsHigh, 2000);
+    await new Promise(r => setTimeout(r, 0));
+    adjustAttempts++;
   }
 
   // 二分搜索
@@ -119,10 +117,10 @@ async function binarySearchCoeff(
   let bestRate = resLow.rate;
   let bestError = Math.abs(bestRate - targetRate);
 
-  for (let iter = 0; iter < 8; iter++) {
+  for (let iter = 0; iter < 6; iter++) {
     const mid = (low + high) / 2;
     const coeffsMid = createUniformCoefficients(needs, mid);
-    const resMid = await simulateWeek(setup, week, coeffsMid, 6000);
+    const resMid = await simulateWeek(setup, week, coeffsMid, 4000);
 
     const error = Math.abs(resMid.rate - targetRate);
     if (error < bestError) {
@@ -143,8 +141,11 @@ async function binarySearchCoeff(
       low = mid;
     }
 
+    // 让出主线程，避免卡死
+    await new Promise(r => setTimeout(r, 0));
+
     // 如果已经够接近，提前退出
-    if (bestError < 0.3) break;
+    if (bestError < 0.5) break;
   }
 
   return { coeff: bestCoeff, finalRate: bestRate };
@@ -371,27 +372,35 @@ export async function solveCoefficientsAsync(
   let low = 0.00005;
   let high = 0.01;
 
-  // 初步范围测试
-  let testLow = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, low), 4000);
-  let testHigh = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, high), 4000);
+  // 初步范围测试（少量trial快速定位）
+  let testLow = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, low), 2000);
+  await new Promise(r => setTimeout(r, 0));
+  let testHigh = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, high), 2000);
+  await new Promise(r => setTimeout(r, 0));
 
-  while (testLow.week2Rate > 4 && low > 1e-7) {
+  let w2AdjustAttempts = 0;
+  while (testLow.week2Rate > 4 && low > 1e-7 && w2AdjustAttempts < 3) {
     low *= 0.5;
-    testLow = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, low), 3000);
+    testLow = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, low), 2000);
+    await new Promise(r => setTimeout(r, 0));
+    w2AdjustAttempts++;
   }
-  while (testHigh.week2Rate < 4 && high < 0.1) {
+  w2AdjustAttempts = 0;
+  while (testHigh.week2Rate < 4 && high < 0.1 && w2AdjustAttempts < 3) {
     high *= 2;
-    testHigh = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, high), 3000);
+    testHigh = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, high), 2000);
+    await new Promise(r => setTimeout(r, 0));
+    w2AdjustAttempts++;
   }
 
   // 二分搜索第二周系数
   let bestW2Coeff = (low + high) / 2;
   let bestW2Error = 100;
 
-  for (let iter = 0; iter < 8; iter++) {
+  for (let iter = 0; iter < 6; iter++) {
     const mid = (low + high) / 2;
     const w2Coeffs = createUniformCoefficients(w2Needs, mid);
-    const res = await simulateBothWeeks(setup, w1Coeffs, w2Coeffs, 6000);
+    const res = await simulateBothWeeks(setup, w1Coeffs, w2Coeffs, 4000);
 
     const error = Math.abs(res.week2Rate - 4);
     if (error < bestW2Error) {
@@ -402,7 +411,7 @@ export async function solveCoefficientsAsync(
 
     if (onProgress) {
       onProgress({
-        iteration: 2 + iter / 8,
+        iteration: 2,
         totalIterations: 3,
         week1Rate: w1BestRate,
         week2Rate: res.week2Rate,
@@ -417,14 +426,28 @@ export async function solveCoefficientsAsync(
       low = mid;
     }
 
-    if (bestW2Error < 0.3) break;
+    // 让出主线程
+    await new Promise(r => setTimeout(r, 0));
+
+    if (bestW2Error < 0.5) break;
   }
 
   w2BestCoeff = bestW2Coeff;
 
+  if (onProgress) {
+    onProgress({
+      iteration: 3,
+      totalIterations: 3,
+      week1Rate: w1BestRate,
+      week2Rate: w2BestRate,
+      error: bestW2Error,
+      isConverged: false,
+    });
+  }
+
   // ========== 最终结果 ==========
   const finalW2Coeffs = createUniformCoefficients(w2Needs, w2BestCoeff);
-  const final = await simulateBothWeeks(setup, w1Coeffs, finalW2Coeffs, 20000);
+  const final = await simulateBothWeeks(setup, w1Coeffs, finalW2Coeffs, 12000);
 
   return {
     coefficients: { week1: w1Coeffs, week2: finalW2Coeffs },
