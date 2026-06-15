@@ -1,123 +1,184 @@
 /**
- * 卡面选择页（修正版）
- *
- * 特性：
- * 1. 两套组合，每套3张卡（其中1张需要2张）
- * 2. 显示A-J分别是什么卡
- * 3. 自动计算所有背包状态的降权系数
- * 4. 交叉控制逻辑
+ * 卡面选择页（完全自由组合版）
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { Row, Col, Card as AntCard, Button, Space, Typography, message, Progress, Tag, Table, Alert } from 'antd';
-import { CalculatorOutlined, SettingOutlined } from '@ant-design/icons';
-import type { CardSetup, Combination, StateResult } from '@/types';
-import { BASE_CARDS, RARITY_CONFIG } from '@/constants';
-import { runFullSimulation, BACKPACK_CONFIGS } from '@/services/simulationEngine';
+import { useState, useCallback } from 'react';
+import { Row, Col, Card as AntCard, Button, Space, Typography, message, Progress, Table, Tag, InputNumber, Select } from 'antd';
+import { CalculatorOutlined, SettingOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import type { Combination, SingleStateResult } from '@/types';
+import { runFullSimulation, BACKPACK_STATES } from '@/services/simulationEngine';
 
 const { Title, Text } = Typography;
+const { Option } = Select;
+
+const ALL_CARDS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 
 interface CardSelectionPageProps {
   onNavigateToConfig?: () => void;
 }
 
-// 10张卡信息
-const CARD_INFO: Record<string, { name: string; rarity: string; color: string }> = {
-  A: { name: '神奇卡 A', rarity: 'MAGIC', color: '#FFD700' },
-  B: { name: '稀有卡 B', rarity: 'RARE', color: '#9B59B6' },
-  C: { name: '稀有卡 C', rarity: 'RARE', color: '#9B59B6' },
-  D: { name: '稀有卡 D', rarity: 'RARE', color: '#9B59B6' },
-  E: { name: '稀有卡 E', rarity: 'RARE', color: '#9B59B6' },
-  F: { name: '普通卡 F', rarity: 'COMMON', color: '#95A5A6' },
-  G: { name: '普通卡 G', rarity: 'COMMON', color: '#95A5A6' },
-  H: { name: '普通卡 H', rarity: 'COMMON', color: '#95A5A6' },
-  I: { name: '普通卡 I', rarity: 'COMMON', color: '#95A5A6' },
-  J: { name: '普通卡 J', rarity: 'COMMON', color: '#95A5A6' },
-};
-
 export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps) {
-  // 组合配置（3张卡：1张需要2张 + 2张各需要1张）
-  const [setup, setSetup] = useState<CardSetup>({
-    week1: {
+  // 组合配置（完全自由）
+  const [combinations, setCombinations] = useState<Combination[]>([
+    {
       name: '第一套',
-      doubleCard: 'A',  // 需要2张
-      singleCards: ['B', 'C'],  // 各需要1张
+      requirements: [
+        { cardId: 'A', count: 2 },
+        { cardId: 'B', count: 1 },
+        { cardId: 'C', count: 1 },
+      ],
+      deadline: 7,
     },
-    week2: {
+    {
       name: '第二套',
-      doubleCard: 'C',  // 需要2张
-      singleCards: ['D', 'E'],  // 各需要1张
+      requirements: [
+        { cardId: 'C', count: 2 },
+        { cardId: 'D', count: 1 },
+        { cardId: 'E', count: 1 },
+      ],
+      deadline: 14,
     },
-  });
+  ]);
 
   // 模拟状态
   const [isCalculating, setIsCalculating] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [results, setResults] = useState<StateResult[]>([]);
-  const [bestState, setBestState] = useState<StateResult | null>(null);
+  const [results, setResults] = useState<SingleStateResult[]>([]);
+  const [bestState, setBestState] = useState<SingleStateResult | null>(null);
+
+  // 添加组合
+  const addCombination = useCallback(() => {
+    setCombinations(prev => [
+      ...prev,
+      {
+        name: `组合${prev.length + 1}`,
+        requirements: [],
+        deadline: 14,
+      },
+    ]);
+  }, []);
+
+  // 删除组合
+  const removeCombination = useCallback((index: number) => {
+    setCombinations(prev => prev.filter((_, i) => i !== index));
+  }, []);
 
   // 更新组合
-  const updateCombination = useCallback((week: 'week1' | 'week2', updates: Partial<Combination>) => {
-    setSetup(prev => ({
-      ...prev,
-      [week]: { ...prev[week], ...updates },
+  const updateCombination = useCallback((index: number, updates: Partial<Combination>) => {
+    setCombinations(prev => prev.map((combo, i) =>
+      i === index ? { ...combo, ...updates } : combo
+    ));
+  }, []);
+
+  // 添加卡片需求
+  const addRequirement = useCallback((comboIndex: number) => {
+    setCombinations(prev => prev.map((combo, i) => {
+      if (i !== comboIndex) return combo;
+      // 找一张未使用的卡
+      const usedCards = new Set(combo.requirements.map(r => r.cardId));
+      const availableCard = ALL_CARDS.find(c => !usedCards.has(c)) || 'A';
+      return {
+        ...combo,
+        requirements: [...combo.requirements, { cardId: availableCard, count: 1 }],
+      };
+    }));
+  }, []);
+
+  // 更新卡片需求
+  const updateRequirement = useCallback((
+    comboIndex: number,
+    reqIndex: number,
+    updates: { cardId?: string; count?: number }
+  ) => {
+    setCombinations(prev => prev.map((combo, i) => {
+      if (i !== comboIndex) return combo;
+      return {
+        ...combo,
+        requirements: combo.requirements.map((req, j) =>
+          j === reqIndex ? { ...req, ...updates } : req
+        ),
+      };
+    }));
+  }, []);
+
+  // 删除卡片需求
+  const removeRequirement = useCallback((comboIndex: number, reqIndex: number) => {
+    setCombinations(prev => prev.map((combo, i) => {
+      if (i !== comboIndex) return combo;
+      return {
+        ...combo,
+        requirements: combo.requirements.filter((_, j) => j !== reqIndex),
+      };
     }));
   }, []);
 
   // 运行模拟
   const runSimulation = useCallback(() => {
+    if (combinations.length === 0) {
+      message.error('请至少配置一个组合');
+      return;
+    }
+
+    // 验证每个组合
+    for (const combo of combinations) {
+      if (combo.requirements.length === 0) {
+        message.error(`组合"${combo.name}"没有配置卡片`);
+        return;
+      }
+    }
+
     setIsCalculating(true);
     setProgress(0);
     setResults([]);
     setBestState(null);
 
-    // 使用setTimeout模拟异步
+    // 模拟进度更新
+    const updateProgress = () => {
+      const interval = setInterval(() => {
+        setProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(interval);
+            return 90;
+          }
+          return prev + 10;
+        });
+      }, 200);
+      return interval;
+    };
+
+    const interval = updateProgress();
+
+    // 使用setTimeout让UI更新
     setTimeout(() => {
-      const result = runFullSimulation(setup, 4.0, 10000);
+      const result = runFullSimulation({ combinations }, 4.0, 15000);
+
+      clearInterval(interval);
+      setProgress(100);
       setResults(result.stateResults);
       setBestState(result.bestState);
-      setProgress(100);
       setIsCalculating(false);
     }, 100);
-  }, [setup]);
+  }, [combinations]);
 
-  // 结果表格列
+  // 表格列
   const resultColumns = [
+    { title: '背包状态', dataIndex: 'label', key: 'label' },
+    { title: '描述', dataIndex: 'description', key: 'description' },
     {
-      title: '背包状态',
-      dataIndex: 'label',
-      key: 'label',
-    },
-    {
-      title: '全收集率（核心）',
+      title: '全收集率',
       dataIndex: 'fullCollectionRate',
       key: 'fullCollectionRate',
-      render: (rate: number) => (
-        <span style={{ fontSize: 18, fontWeight: 'bold', color: rate > 50 ? '#52c41a' : '#fa8c16' }}>
-          {rate.toFixed(2)}%
-        </span>
-      ),
+      render: (v: number) => <Tag color={v > 50 ? 'green' : 'orange'}>{v.toFixed(2)}%</Tag>,
     },
-    {
-      title: '第一套中奖率',
-      dataIndex: 'week1Rate',
-      key: 'week1Rate',
-      render: (rate: number) => (
-        <span style={{ color: Math.abs(rate - 4) < 1 ? '#52c41a' : '#f5222d' }}>
-          {rate.toFixed(2)}%
-        </span>
-      ),
-    },
-    {
-      title: '第二套中奖率',
-      dataIndex: 'week2Rate',
-      key: 'week2Rate',
-      render: (rate: number) => (
-        <span style={{ color: Math.abs(rate - 4) < 1 ? '#52c41a' : '#f5222d' }}>
-          {rate.toFixed(2)}%
-        </span>
-      ),
-    },
+    ...combinations.map((combo, idx) => ({
+      title: `${combo.name}中奖率`,
+      key: combo.name,
+      render: (record: SingleStateResult) => {
+        const rate = record.combinationRates[combo.name] || 0;
+        const color = Math.abs(rate - 4) < 1 ? 'green' : Math.abs(rate - 4) < 2 ? 'orange' : 'red';
+        return <Tag color={color}>{rate.toFixed(2)}%</Tag>;
+      },
+    })),
   ];
 
   return (
@@ -125,109 +186,96 @@ export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps
       <div style={{ marginBottom: 24 }}>
         <Title level={2}>🎴 神奇物种概率测算系统</Title>
         <Text type="secondary">
-          配置两套组合（每套3张卡），系统自动计算降权系数，控制中奖率≈4%，最大化全收集率
+          自由配置组合（任意卡片、任意数量），自动计算降权系数控制中奖率≈4%
         </Text>
       </div>
-
-      {/* 卡片说明 */}
-      <AntCard title="卡片说明（A-J）" style={{ marginBottom: 24 }}>
-        <Row gutter={[16, 16]}>
-          {Object.entries(CARD_INFO).map(([id, info]) => (
-            <Col key={id} xs={12} sm={8} md={6} lg={4}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: '50%',
-                    backgroundColor: info.color,
-                    color: '#fff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 'bold',
-                  }}
-                >
-                  {id}
-                </div>
-                <div>
-                  <Text strong>{info.name}</Text>
-                  <br />
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {info.rarity === 'MAGIC' ? '神奇' : info.rarity === 'RARE' ? '稀有' : '普通'}
-                  </Text>
-                </div>
-              </div>
-            </Col>
-          ))}
-        </Row>
-      </AntCard>
 
       <Row gutter={[24, 24]}>
         {/* 左侧：组合配置 */}
         <Col xs={24} lg={14}>
-          <AntCard title="组合配置（每套3张卡）" bordered={false}>
+          <AntCard title="组合配置（完全自由）" bordered={false}>
             <Space direction="vertical" style={{ width: '100%' }} size="large">
-              {(['week1', 'week2'] as const).map((week, weekIdx) => {
-                const combo = setup[week];
-                const weekName = week === 'week1' ? '第一套（第1-7天）' : '第二套（第1-14天）';
+              {combinations.map((combo, comboIdx) => (
+                <div key={comboIdx} style={{ border: '1px solid #d9d9d9', borderRadius: 8, padding: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <Space>
+                      <InputNumber
+                        min={1}
+                        max={14}
+                        value={combo.deadline}
+                        onChange={(v) => updateCombination(comboIdx, { deadline: v || 7 })}
+                        addonBefore="第"
+                        addonAfter="天截止"
+                        style={{ width: 140 }}
+                      />
+                      <input
+                        value={combo.name}
+                        onChange={(e) => updateCombination(comboIdx, { name: e.target.value })}
+                        style={{ fontWeight: 'bold', fontSize: 16, padding: '4px 8px', border: '1px solid #d9d9d9', borderRadius: 4 }}
+                      />
+                    </Space>
+                    <Button
+                      type="text"
+                      danger
+                      icon={<DeleteOutlined />}
+                      onClick={() => removeCombination(comboIdx)}
+                    />
+                  </div>
 
-                return (
-                  <div key={week} style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 16 }}>
-                    <Title level={5} style={{ marginBottom: 16 }}>{weekName}</Title>
+                  <div style={{ marginBottom: 8 }}>
+                    <Text type="secondary">需要的卡片（数量和种类任意）：</Text>
+                  </div>
 
-                    <div style={{ marginBottom: 16 }}>
-                      <Text strong>需要2张的卡：</Text>
-                      <Space wrap style={{ marginLeft: 8 }}>
-                        {Object.keys(CARD_INFO).map(cardId => (
-                          <Button
-                            key={cardId}
-                            size="small"
-                            type={combo.doubleCard === cardId ? 'primary' : 'default'}
-                            onClick={() => updateCombination(week, { doubleCard: cardId })}
-                            style={{
-                              backgroundColor: combo.doubleCard === cardId ? CARD_INFO[cardId].color : undefined,
-                            }}
-                          >
-                            {cardId}
-                          </Button>
-                        ))}
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    {combo.requirements.map((req, reqIdx) => (
+                      <Space key={reqIdx}>
+                        <Select
+                          value={req.cardId}
+                          onChange={(v) => updateRequirement(comboIdx, reqIdx, { cardId: v })}
+                          style={{ width: 80 }}
+                        >
+                          {ALL_CARDS.map(c => <Option key={c} value={c}>{c}</Option>)}
+                        </Select>
+                        <InputNumber
+                          min={1}
+                          max={5}
+                          value={req.count}
+                          onChange={(v) => updateRequirement(comboIdx, reqIdx, { count: v || 1 })}
+                          addonAfter="张"
+                          style={{ width: 100 }}
+                        />
+                        <Button
+                          type="text"
+                          danger
+                          size="small"
+                          icon={<DeleteOutlined />}
+                          onClick={() => removeRequirement(comboIdx, reqIdx)}
+                        />
                       </Space>
-                    </div>
+                    ))}
+                    <Button
+                      type="dashed"
+                      size="small"
+                      icon={<PlusOutlined />}
+                      onClick={() => addRequirement(comboIdx)}
+                    >
+                      添加卡片
+                    </Button>
+                  </Space>
 
-                    <div>
-                      <Text strong>需要各1张的卡：</Text>
-                      <div style={{ marginTop: 8 }}>
-                        {combo.singleCards.map((cardId, idx) => (
-                          <Space key={idx} style={{ marginRight: 16, marginBottom: 8 }}>
-                            <Text>卡{idx + 1}:</Text>
-                            <select
-                              value={cardId}
-                              onChange={(e) => {
-                                const newCards = [...combo.singleCards];
-                                newCards[idx] = e.target.value;
-                                updateCombination(week, { singleCards: newCards as [string, string] });
-                              }}
-                              style={{ padding: '4px 8px' }}
-                            >
-                              {Object.keys(CARD_INFO).map(id => (
-                                <option key={id} value={id}>{id}</option>
-                              ))}
-                            </select>
-                          </Space>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div style={{ marginTop: 16, padding: 12, backgroundColor: '#f6ffed', borderRadius: 4 }}>
-                      <Text>当前配置：</Text>
+                  {combo.requirements.length > 0 && (
+                    <div style={{ marginTop: 12, padding: 8, backgroundColor: '#f6ffed', borderRadius: 4 }}>
                       <Text strong style={{ color: '#52c41a' }}>
-                        {combo.doubleCard}×2 + {combo.singleCards[0]}×1 + {combo.singleCards[1]}×1
+                        {combo.requirements.map(r => `${r.cardId}×${r.count}`).join(' + ')}
                       </Text>
                     </div>
-                  </div>
-                );
-              })}
+                  )}
+                </div>
+              ))}
+
+              <Button type="dashed" block icon={<PlusOutlined />} onClick={addCombination}>
+                添加组合
+              </Button>
             </Space>
           </AntCard>
         </Col>
@@ -249,21 +297,13 @@ export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps
 
             {isCalculating && (
               <div style={{ marginBottom: 16 }}>
-                <Progress percent={Math.round(progress)} status="active" />
-                <Text type="secondary">正在计算5种背包状态...</Text>
+                <Progress percent={progress} status="active" />
+                <Text type="secondary">正在计算各背包状态...</Text>
               </div>
             )}
 
-            {results.length > 0 && !isCalculating && (
+            {results.length > 0 && (
               <div>
-                <Alert
-                  message="测算完成"
-                  description="所有背包状态的降权系数已自动计算，控制中奖率≈4%"
-                  type="success"
-                  showIcon
-                  style={{ marginBottom: 16 }}
-                />
-
                 {bestState && (
                   <AntCard size="small" style={{ marginBottom: 16, backgroundColor: '#f6ffed' }}>
                     <div style={{ textAlign: 'center' }}>
@@ -271,7 +311,7 @@ export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps
                       <div style={{ fontSize: 24, fontWeight: 'bold', color: '#52c41a' }}>
                         {bestState.label}
                       </div>
-                      <Text type="secondary">14天全收集率</Text>
+                      <Text type="secondary">平均14天全收集率</Text>
                       <div style={{ fontSize: 36, fontWeight: 'bold', color: '#52c41a' }}>
                         {bestState.fullCollectionRate.toFixed(2)}%
                       </div>
@@ -284,20 +324,25 @@ export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps
                   dataSource={results}
                   columns={resultColumns}
                   pagination={false}
-                  rowKey="backpackState"
+                  rowKey="state"
                 />
 
-                {/* 降权系数详情 */}
+                {/* 降权系数展示 */}
                 <div style={{ marginTop: 16 }}>
-                  <Text strong>降权系数示例（{results[0]?.label}）：</Text>
-                  <div style={{ marginTop: 8 }}>
-                    {Object.entries(results[0]?.coefficients || {}).slice(0, 5).map(([card, coeff]) => (
-                      <Tag key={card} style={{ margin: '0 4px 4px 0' }}>
-                        {card}: {coeff.count1.toFixed(3)}
-                      </Tag>
-                    ))}
-                    <Text type="secondary">...</Text>
+                  <Text strong>降权系数（示例）- {results[0]?.label}:</Text>
+                  <div style={{ marginTop: 8, fontSize: 12 }}>
+                    {Object.entries(results[0]?.coefficients || {})
+                      .filter(([_, coeffs]) => coeffs[1] > 0)
+                      .slice(0, 5)
+                      .map(([card, coeffs]) => (
+                        <Tag key={card} style={{ margin: '2px 4px' }}>
+                          {card}: [{coeffs.map(c => (c * 100).toFixed(1) + '%').join(', ')}]
+                        </Tag>
+                      ))}
                   </div>
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    [持有0张系数, 持有1张系数, 持有2张系数...]
+                  </Text>
                 </div>
               </div>
             )}
