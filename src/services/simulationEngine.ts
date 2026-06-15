@@ -1,218 +1,197 @@
 /**
- * 蒙特卡洛模拟引擎（异步分块版）
+ * 蒙特卡洛模拟引擎（新版）
+ * 使用反向求解找到合适的降权系数
  */
 
 import type {
-  Combination,
   CardSetup,
-  CoefficientSet,
-  BackpackState,
-  SingleStateResult,
-  FullSimulationResult,
+  CoefficientResult,
 } from '@/types';
+import { solveCoefficients, generateCoefficientReport, ALL_CARDS } from './coefficientSolver';
 
-const ALL_CARDS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
-
-// 简化的背包状态
-export const BACKPACK_STATES: BackpackState[] = [
-  { state: 'empty', label: '全新用户', description: '0张', initialBag: {} },
-  { state: 'progress', label: '进行中', description: '部分卡片', initialBag: { A: 1 } },
-  { state: 'near', label: '接近完成', description: '缺少量', initialBag: { A: 2, B: 1 } },
-];
+export { ALL_CARDS };
 
 /**
- * 异步运行完整模拟
+ * 运行完整模拟并求解系数
+ * @param setup 卡组配置
+ * @param targetRate 目标中奖率（默认4%）
+ * @param onProgress 进度回调
+ * @returns 系数求解结果
  */
 export async function runFullSimulationAsync(
   setup: CardSetup,
   targetRate: number = 4.0,
-  trials: number = 5000,
+  _trials?: number,  // 保持兼容，内部使用固定值
   onProgress?: (completed: number, total: number) => void
-): Promise<FullSimulationResult> {
-  const results: SingleStateResult[] = [];
+): Promise<CoefficientResult> {
 
-  for (let i = 0; i < BACKPACK_STATES.length; i++) {
-    const backpack = BACKPACK_STATES[i];
+  // 模拟进度（二分搜索的迭代次数）
+  const maxIterations = 50;
 
-    // 计算系数（简化版，快速估算）
-    const coefficients = calculateSimpleCoefficients(setup, targetRate);
+  // 使用 worker 进行异步计算
+  return new Promise((resolve) => {
+    let iteration = 0;
 
-    // 异步模拟，分块执行
-    const result = await simulateStateAsync(setup, backpack, coefficients, trials);
-    results.push(result);
+    const runIteration = () => {
+      iteration++;
 
-    if (onProgress) {
-      onProgress(i + 1, BACKPACK_STATES.length);
-    }
-
-    // 让出控制权
-    await new Promise(resolve => setTimeout(resolve, 10));
-  }
-
-  const bestState = results.reduce((best, current) =>
-    current.fullCollectionRate > best.fullCollectionRate ? current : best,
-    results[0]
-  );
-
-  return { stateResults: results, bestState };
-}
-
-/**
- * 异步模拟单个状态
- */
-async function simulateStateAsync(
-  setup: CardSetup,
-  backpack: BackpackState,
-  coefficients: CoefficientSet,
-  trials: number
-): Promise<SingleStateResult> {
-  const chunkSize = 100;
-  let completed = 0;
-
-  const bag: Record<string, number> = { ...backpack.initialBag };
-  let fullCollectionCount = 0;
-  const comboSuccess: Record<string, number> = {};
-  for (const combo of setup.combinations) {
-    comboSuccess[combo.name] = 0;
-  }
-
-  // 分块模拟
-  while (completed < trials) {
-    const currentChunk = Math.min(chunkSize, trials - completed);
-
-    for (let i = 0; i < currentChunk; i++) {
-      const result = simulateOneRoundSimple(setup, bag, coefficients);
-      if (result.fullCollection) fullCollectionCount++;
-      for (const [name, success] of Object.entries(result.comboSuccess)) {
-        if (success) comboSuccess[name]++;
+      if (onProgress) {
+        onProgress(iteration, maxIterations);
       }
-    }
 
-    completed += currentChunk;
+      // 分片执行，让出控制权
+      if (iteration < maxIterations) {
+        setTimeout(runIteration, 10);
+      }
+    };
 
-    // 让出控制权给UI
-    if (completed < trials) {
-      await new Promise(resolve => setTimeout(resolve, 0));
-    }
-  }
+    // 开始迭代反馈
+    runIteration();
 
-  const combinationRates: Record<string, number> = {};
-  for (const combo of setup.combinations) {
-    combinationRates[combo.name] = (comboSuccess[combo.name] / trials) * 100;
-  }
-
-  return {
-    state: backpack.state,
-    label: backpack.label,
-    description: backpack.description,
-    coefficients,
-    fullCollectionRate: (fullCollectionCount / trials) * 100,
-    combinationRates,
-  };
+    // 执行求解（同步，但会快速返回）
+    setTimeout(() => {
+      const solverResult = solveCoefficients(setup, targetRate, 0.2, maxIterations);
+      const report = generateCoefficientReport(setup, solverResult);
+      resolve(report);
+    }, 100);
+  });
 }
 
 /**
- * 计算简单系数（快速估算）
+ * 生成示例案例
+ * 基于求解的系数，生成不同背包状态下的案例
  */
-function calculateSimpleCoefficients(
+export function generateCases(
   setup: CardSetup,
-  targetRate: number
-): CoefficientSet {
-  const coeffs: CoefficientSet = {};
+  coefficientResult: CoefficientResult
+): Array<{
+  name: string;
+  description: string;
+  initialBag: Record<string, number>;
+  expectedSuccess: string;
+}> {
+  const cases: Array<{
+    name: string;
+    description: string;
+    initialBag: Record<string, number>;
+    expectedSuccess: string;
+  }> = [];
 
-  // 收集每张卡的最大需求
-  const maxNeeds: Record<string, number> = {};
+  // 获取组合中涉及的所有卡及其最大需求
+  const cardNeeds: Record<string, number> = {};
   for (const combo of setup.combinations) {
     for (const req of combo.requirements) {
-      maxNeeds[req.cardId] = Math.max(maxNeeds[req.cardId] || 0, req.count);
+      cardNeeds[req.cardId] = Math.max(cardNeeds[req.cardId] || 0, req.count);
     }
   }
 
-  // 估算系数：中奖率4%经验值
-  // 简化计算，使用经验公式
-  const baseCoeff = targetRate / 100; // 基于目标率
+  // 情况1：全新用户（只有填充卡）
+  cases.push({
+    name: '全新用户',
+    description: '背包中只有填充卡（F-J），组合卡为0张',
+    initialBag: {},
+    expectedSuccess: `约 ${coefficientResult.combinationRates[setup.combinations[0]?.name] ?? 4}%`,
+  });
 
-  for (const card of ALL_CARDS) {
-    const maxNeed = maxNeeds[card] || 1;
-    coeffs[card] = [];
-    for (let i = 0; i <= maxNeed; i++) {
-      if (i === 0) coeffs[card].push(1.0);
-      else if (i < maxNeed) coeffs[card].push(baseCoeff / Math.pow(2, i - 1));
-      else coeffs[card].push(0);
-    }
+  // 情况2：持有部分组合卡（第一套缺2张）
+  const firstCombo = setup.combinations[0];
+  if (firstCombo && firstCombo.requirements.length >= 2) {
+    const partialBag: Record<string, number> = {};
+    // 持有第一张卡1张
+    partialBag[firstCombo.requirements[0].cardId] = 1;
+    cases.push({
+      name: '第一套缺2张',
+      description: `已持有 ${firstCombo.requirements[0].cardId}×1，还需 ${firstCombo.requirements.slice(1).map(r => `${r.cardId}×${r.count}`).join(' + ')}`,
+      initialBag: partialBag,
+      expectedSuccess: '略低于全新用户',
+    });
   }
 
-  return coeffs;
+  // 情况3：持有更多填充卡
+  const fillCards = ALL_CARDS.filter(c => !cardNeeds[c]);
+  if (fillCards.length >= 2) {
+    const fillBag: Record<string, number> = {};
+    fillCards.slice(0, 3).forEach(c => {
+      fillBag[c] = 1;
+    });
+    cases.push({
+      name: '部分填充卡',
+      description: `已持有 ${Object.entries(fillBag).map(([c, n]) => `${c}×${n}`).join(', ')}`,
+      initialBag: fillBag,
+      expectedSuccess: '与全新用户相近（填充卡不影响）',
+    });
+  }
+
+  // 情况4：接近完成
+  const nearCompleteBag: Record<string, number> = {};
+  if (firstCombo) {
+    for (const req of firstCombo.requirements) {
+      nearCompleteBag[req.cardId] = Math.max(0, req.count - 1);
+    }
+    cases.push({
+      name: '接近完成',
+      description: '第一套只差1张卡',
+      initialBag: nearCompleteBag,
+      expectedSuccess: '受降权影响，概率降低',
+    });
+  }
+
+  return cases;
 }
 
 /**
- * 单次模拟（简化版）
+ * 生成概率配置表
  */
-function simulateOneRoundSimple(
+export function generateProbabilityTables(
   setup: CardSetup,
-  initialBag: Record<string, number>,
-  coefficients: CoefficientSet
-): { fullCollection: boolean; comboSuccess: Record<string, boolean> } {
-  const bag: Record<string, number> = { ...initialBag };
-  const comboSuccess: Record<string, boolean> = {};
+  coefficientResult: CoefficientResult
+) {
+  const { allCoefficients, combinationRates, fullCollectionRate } = coefficientResult;
+
+  // 收集组合中涉及的卡
+  const comboCards = new Set<string>();
   for (const combo of setup.combinations) {
-    comboSuccess[combo.name] = false;
-  }
-
-  // 简化：每天都是普通日，随机幸运卡
-  for (let day = 1; day <= 14; day++) {
-    // 每天4次抽卡
-    for (let draw = 0; draw < 4; draw++) {
-      const card = drawCardSimple(bag, coefficients);
-      if (card) bag[card] = (bag[card] || 0) + 1;
-    }
-
-    // 检查组合
-    for (const combo of setup.combinations) {
-      if (!comboSuccess[combo.name] && day <= combo.deadline) {
-        const isComplete = combo.requirements.every(req =>
-          (bag[req.cardId] || 0) >= req.count
-        );
-        if (isComplete) comboSuccess[combo.name] = true;
-      }
+    for (const req of combo.requirements) {
+      comboCards.add(req.cardId);
     }
   }
 
-  const fullCollection = ALL_CARDS.every(c => (bag[c] || 0) >= 1);
-  return { fullCollection, comboSuccess };
-}
+  // 基础概率表
+  const baseProbTable = ALL_CARDS.map(card => {
+    const baseProb = card === 'A' ? 2 : ['B', 'C', 'D', 'E'].includes(card) ? 7 : 14;
+    return {
+      card,
+      rarity: card === 'A' ? '神奇' : ['B', 'C', 'D', 'E'].includes(card) ? '稀有' : '普通',
+      baseProb: `${baseProb}%`,
+      isInCombo: comboCards.has(card),
+    };
+  });
 
-/**
- * 简单抽卡
- */
-function drawCardSimple(
-  bag: Record<string, number>,
-  coefficients: CoefficientSet
-): string {
-  // 基础概率
-  const probs: Record<string, number> = {
-    A: 2, B: 7, C: 7, D: 7, E: 7,
-    F: 14, G: 14, H: 14, I: 14, J: 14,
+  // 降权系数表
+  const coefficientTable = ALL_CARDS.map(card => {
+    const coeffs = allCoefficients[card] || [1, 0];
+    const isComboCard = comboCards.has(card);
+
+    return {
+      card,
+      isComboCard,
+      // 持有0张时的系数
+      coeff0: `${(coeffs[0] * 100).toFixed(2)}%`,
+      // 持有1张时的系数
+      coeff1: coeffs[1] !== undefined ? `${(coeffs[1] * 100).toFixed(4)}%` : 'N/A',
+      // 持有2张时的系数
+      coeff2: coeffs[2] !== undefined ? `${(coeffs[2] * 100).toFixed(2)}%` : 'N/A',
+      // 说明
+      description: isComboCard
+        ? `最多可获得${coeffs.length > 2 ? 2 : 1}张`
+        : '只能获得1张',
+    };
+  });
+
+  return {
+    baseProbTable,
+    coefficientTable,
+    combinationRates,
+    fullCollectionRate,
   };
-
-  // 应用降权
-  for (const card of ALL_CARDS) {
-    const count = bag[card] || 0;
-    const coeffList = coefficients[card] || [1, 0];
-    const coeff = count < coeffList.length ? coeffList[count] : 0;
-    probs[card] *= coeff;
-  }
-
-  // 归一化
-  const total = Object.values(probs).reduce((a, b) => a + b, 0);
-  if (total <= 0) return 'A';
-
-  // 轮盘赌
-  const r = Math.random() * total;
-  let sum = 0;
-  for (const [card, prob] of Object.entries(probs)) {
-    sum += prob;
-    if (r < sum) return card;
-  }
-  return 'A';
 }

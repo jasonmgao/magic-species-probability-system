@@ -55,3 +55,31 @@ export interface FullSimulationResult {
   stateResults: SingleStateResult[];
   bestState: SingleStateResult | null;
 }
+
+/**
+ * 按缺卡数量划分的系数
+ */
+export interface MissingCountCoeffs {
+  [cardId: string]: number;
+}
+
+/**
+ * 系数求解结果
+ */
+export interface CoefficientResult {
+  // 按缺卡数量划分的系数
+  byMissingCount: {
+    missing3: MissingCountCoeffs;  // 缺3张时的系数
+    missing2: MissingCountCoeffs;  // 缺2张时的系数
+    missing1: MissingCountCoeffs;  // 缺1张时的系数
+  };
+  // 完整系数表
+  allCoefficients: CoefficientSet;
+  // 组合成功率（每组组合的中奖率）
+  combinationRates: Record<string, number>;
+  // 14天全收集率
+  fullCollectionRate: number;
+  // 收敛状态
+  converged: boolean;
+  iterations: number;
+}
