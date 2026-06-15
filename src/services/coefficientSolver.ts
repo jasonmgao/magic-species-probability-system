@@ -285,14 +285,12 @@ function calculateFullCollectionRate(
       // 复制一份用于应用降权
       const p_s = { ...p_raw };
 
-      // 应用降权系数（只影响组合卡的多张获取）
+      // 应用降权系数（已有卡则概率降低，但不禁止多次获得）
       for (const card of combo1Cards) {
-        if (bag[card] === 1) p_s[card] *= coeffs1.coeff;
-        else if (bag[card] >= 2) p_s[card] = 0;
+        if (bag[card] >= 1) p_s[card] *= coeffs1.coeff;
       }
       for (const card of combo2Cards) {
-        if (bag[card] === 1) p_s[card] *= coeffs2.coeff;
-        else if (bag[card] >= 2) p_s[card] = 0;
+        if (bag[card] >= 1) p_s[card] *= coeffs2.coeff;
       }
       // 填充卡只许1张
       for (const card of OTHER_CARDS) {
