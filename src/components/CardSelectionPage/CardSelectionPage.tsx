@@ -88,6 +88,31 @@ export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps
     }));
   }, []);
 
+  // 添加卡片到组合
+  const addCardToCombo = useCallback((comboIndex: number) => {
+    setCombinations(prev => prev.map((combo, i) => {
+      if (i !== comboIndex) return combo;
+      // 找出未使用的卡片
+      const usedCards = new Set(combo.requirements.map(r => r.cardId));
+      const availableCard = ALL_CARDS.find(c => !usedCards.has(c)) || 'A';
+      return {
+        ...combo,
+        requirements: [...combo.requirements, { cardId: availableCard, count: 1 }],
+      };
+    }));
+  }, []);
+
+  // 从组合删除卡片
+  const removeCardFromCombo = useCallback((comboIndex: number, reqIndex: number) => {
+    setCombinations(prev => prev.map((combo, i) => {
+      if (i !== comboIndex) return combo;
+      return {
+        ...combo,
+        requirements: combo.requirements.filter((_, j) => j !== reqIndex),
+      };
+    }));
+  }, []);
+
   // 运行模拟
   const runSimulation = useCallback(async () => {
     if (combinations.length === 0) {
@@ -215,12 +240,31 @@ export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps
                           size="small"
                           bordered={false}
                         />
+                        <Button
+                          type="text"
+                          danger
+                          size="small"
+                          icon={<DeleteOutlined />}
+                          onClick={() => removeCardFromCombo(comboIdx, reqIdx)}
+                        />
                       </div>
                     ))}
+                    {combo.requirements.length < 5 && (
+                      <Button
+                        type="dashed"
+                        size="small"
+                        icon={<PlusOutlined />}
+                        onClick={() => addCardToCombo(comboIdx)}
+                      >
+                        添加卡
+                      </Button>
+                    )}
                   </Space>
 
                   <div style={{ marginTop: 8, fontSize: 12, color: '#666' }}>
-                    目标：{combo.requirements.map(r => `${r.cardId}×${r.count}`).join(' + ')}
+                    目标：{combo.requirements.length > 0
+                      ? combo.requirements.map(r => `${r.cardId}×${r.count}`).join(' + ')
+                      : '请添加卡片'}
                   </div>
                 </div>
               ))}
