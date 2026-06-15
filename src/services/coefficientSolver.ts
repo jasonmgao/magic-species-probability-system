@@ -127,32 +127,30 @@ function calculateInitialCoefficient(
  */
 function initializeCoefficients(
   needs: Map<string, number>,
+  totalSlots: number,  // <-- 关键：用卡槽总数，不是需求量！
   deadline: number,
   _targetRate: number
 ): Record<string, CardCoefficients> {
   const result: Record<string, CardCoefficients> = {};
 
-  for (const [cardId, needCount] of needs.entries()) {
+  for (const [cardId] of needs.entries()) {
     const coeffs: CardCoefficients = [1.0];
 
     // 根据天数和卡的稀有度设置经验值
-    // 7天窗口： coeff[1] ≈ 0.01
-    // 14天窗口：coeff[1] ≈ 0.0006 (根据0.0005→0.8%, 希望到4%稍微提高)
     const isRare = ['B', 'C', 'D', 'E'].includes(cardId);
     const isMagic = cardId === 'A';
 
     let baseCoeff: number;
     if (deadline <= 7) {
-      // 第一周：7天窗口，相对宽松
       baseCoeff = isMagic ? 0.008 : (isRare ? 0.012 : 0.015);
     } else {
-      // 第二周：14天窗口，必须很严格
-      // 测试数据：0.0005 → 0.8%, 要 → 4%，尝试 0.00065
+      // 第二周：14天窗口
       baseCoeff = isMagic ? 0.0004 : (isRare ? 0.00065 : 0.001);
     }
 
-    // 需要多张的卡，后续系数递减
-    for (let i = 1; i < needCount; i++) {
+    // 🔥 关键修复：生成 totalSlots 个系数，不是 needCount 个！
+    // 这样持有 any 数量都可以正确查表
+    for (let i = 1; i < totalSlots; i++) {
       const decay = Math.pow(0.4, i - 1);
       coeffs.push(Math.max(0.00001, baseCoeff * decay));
     }
@@ -372,9 +370,9 @@ export async function solveCoefficientsAsync(
   const week1Deadline = setup.week1.deadline;
   const week2Deadline = setup.week2.deadline;
 
-  // 使用经验值初始化
-  let week1Coeffs = initializeCoefficients(week1Needs, week1Deadline, targetRate);
-  let week2Coeffs = initializeCoefficients(week2Needs, week2Deadline, targetRate);
+  // 使用经验值初始化 - 传入卡槽总数！
+  let week1Coeffs = initializeCoefficients(week1Needs, week1Slots, week1Deadline, targetRate);
+  let week2Coeffs = initializeCoefficients(week2Needs, week2Slots, week2Deadline, targetRate);
 
   const maxIterations = 15;
   const tolerance = 1.0;
