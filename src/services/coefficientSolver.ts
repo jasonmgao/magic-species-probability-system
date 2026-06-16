@@ -1,15 +1,13 @@
 /**
- * 🎯 降权系数求解器（V6.3 - 多系数差异化版本）
+ * 🎯 降权系数求解器（V6.5 - 按"下一个副本"降权）
  *
- * V6.3 核心改版：
- * 1. 每张卡有自己的独立系数（不再是全系统一）
- * 2. 超额槽位越少的卡，系数应该越低（更严格）
- * 3. 多维度网格搜索优化
+ * V6.5 核心修正：
+ * 之前：按"超额数" = have-1 降权（只有有2张才降第3张）
+ * 现在：按"下一个副本索引" = have 降权（有1张就降第2张）
  *
- * 关键洞察：
- * - 超额槽位 = 1 的卡（如 HHF 的 H）：只有 1 次降权机会，必须极严（0.005~0.02）
- * - 超额槽位 = 2 的卡（如 AAA 的 A）：有 2 次降权机会，可以稍宽（0.02~0.05）
- * - 超额槽位多 = 更难完成 = 需要系数帮助更多 = 系数可以高一些
+ * 关键变化：
+ * - HHF的H需求2张，有1张H时，下一个是第2张H → 立即大幅降权
+ * - 确保"差1张集齐"时概率骤降
  */
 
 import type { CardSetup, WeeklyCombo, CoefficientResult, CardCoefficients, SolverProgress } from '@/types';
@@ -33,7 +31,6 @@ export function getBaseProb(card: string): number {
   return BASE_PROBS[card] ?? 14;
 }
 
-/** 统计 combo 需求：卡名 → 需求数量 */
 function countCardNeeds(cards: string[]): Map<string, number> {
   const needs = new Map<string, number>();
   for (const card of cards) {
@@ -42,29 +39,43 @@ function countCardNeeds(cards: string[]): Map<string, number> {
   return needs;
 }
 
-/** 计算某卡在某 combo 中的最大超额槽位数 */
-function getMaxExcessSlots(combo: WeeklyCombo, card: string): number {
+/**
+ * 🎯 V6.5 核心：判断"下一个副本"是否需要降权
+ *
+ * 对于需求need的卡：
+ * - have=0（没有）：下一个抽副本0（第1张）→ 正常概率
+ * - have=1（有1张）：下一个抽副本1（第2张）→ 超额副本，降权！
+ * - have=2（有2张）：下一个抽副本2（第3张）→ 继续降权
+ *
+ * 返回：下一个副本的索引（0=第1张，1=第2张...）
+ * 如果下一个副本索引 >= 1（即不是第1张），就需要降权
+ */
+function getNextCopyIndex(combo: WeeklyCombo, backpack: Record<string, number>, card: string): number {
   const need = countCardNeeds(combo.cards).get(card) || 0;
-  return Math.max(0, need - 1);
-}
+  if (need <= 1) return 0; // 只需要1张，永远是第1张
 
-/** 计算某卡在某 combo 中的实际超额副本数 */
-function getExcessCount(combo: WeeklyCombo, backpack: Record<string, number>, card: string): number {
-  const need = countCardNeeds(combo.cards).get(card) || 0;
-  if (need <= 1) return 0;
   const have = backpack[card] || 0;
-  return Math.min(Math.max(0, have - 1), need - 1);
+  // 下一个副本索引 = 当前持有量（0-based）
+  // have=0 → 下一个索引0（第1张）
+  // have=1 → 下一个索引1（第2张）✓ 这里开始降权
+  return Math.min(have, need - 1); // 限制在最大需求内
 }
 
-/** 获取某卡的全局最大超额槽位数（取两周最大值） */
-function getGlobalMaxExcessSlots(setup: CardSetup, card: string): number {
-  return Math.max(
-    getMaxExcessSlots(setup.week1, card),
-    getMaxExcessSlots(setup.week2, card)
-  );
+/**
+ * 判断是否需要对即将抽取的副本应用降权
+ */
+function shouldReduceNextCopy(combo: WeeklyCombo, backpack: Record<string, number>, card: string): boolean {
+  const nextIndex = getNextCopyIndex(combo, backpack, card);
+  return nextIndex >= 1; // 从第2张开始（索引1）降权
 }
 
-/** 检查 combo 是否完成 */
+/** 计算最大超额槽位数 */
+function getMaxExcessSlots(setup: CardSetup, card: string): number {
+  const w1Need = countCardNeeds(setup.week1.cards).get(card) || 0;
+  const w2Need = countCardNeeds(setup.week2.cards).get(card) || 0;
+  return Math.max(Math.max(0, w1Need - 1), Math.max(0, w2Need - 1));
+}
+
 function checkComboComplete(combo: WeeklyCombo, backpack: Record<string, number>): boolean {
   const needs = countCardNeeds(combo.cards);
   for (const [card, need] of needs.entries()) {
@@ -73,12 +84,10 @@ function checkComboComplete(combo: WeeklyCombo, backpack: Record<string, number>
   return true;
 }
 
-/** 检查全收集 */
 function checkFullCollection(backpack: Record<string, number>): boolean {
   return ALL_CARDS.every(card => (backpack[card] || 0) >= 1);
 }
 
-/** 生成每日类型表（两周） */
 function generateSchedule(): Array<'common' | 'rare' | 'magic'> {
   const week = ['common', 'common', 'common', 'common', 'common', 'rare', 'magic'] as Array<'common' | 'rare' | 'magic'>;
   const shuffle = (arr: Array<'common' | 'rare' | 'magic'>) => {
@@ -92,7 +101,6 @@ function generateSchedule(): Array<'common' | 'rare' | 'magic'> {
   return [...shuffle(week), ...shuffle(week)];
 }
 
-/** 获取幸运卡 */
 function getLuckyCard(
   dayType: 'common' | 'rare' | 'magic',
   comboCards: Set<string>,
@@ -120,10 +128,12 @@ function getLuckyCard(
 }
 
 /**
- * 🔑 V6.3 抽卡核心逻辑（多系数差异化）
+ * 🔑 V6.5 抽卡核心（按下一个副本降权）
  *
- * 变化：coefficients 是 Record<卡名, CardCoefficients>
- * 每张卡有自己的系数，根据该卡的全局超额槽位决定其严格程度
+ * 关键变化：
+ * - have=0（无）：coeff=1.0，正常抽第1张
+ * - have=1（有1张）：coeff=0.001，极难抽第2张（差1张集齐时猛降！）
+ * - have=2（有2张）：继续用超严格系数
  */
 function drawOneCard(
   backpack: Record<string, number>,
@@ -136,57 +146,91 @@ function drawOneCard(
   const isWeek1 = day <= 7;
   const currentCombo = isWeek1 ? setup.week1 : setup.week2;
   const crossCombo = isWeek1 ? setup.week2 : setup.week1;
+  const currentCards = new Set(currentCombo.cards);
+  const crossCards = new Set(crossCombo.cards);
 
   const weightedProbs: Record<string, number> = {};
+
   for (const card of ALL_CARDS) {
     const coeffArray = coefficients[card] || [1.0];
-    const currentExcess = currentCombo.cards.includes(card)
-      ? getExcessCount(currentCombo, backpack, card)
-      : 0;
-    const crossExcess = crossCombo.cards.includes(card)
-      ? getExcessCount(crossCombo, backpack, card)
-      : 0;
+    const isCurrent = currentCards.has(card);
+    const isCross = crossCards.has(card);
 
-    // V6.3：多卡多系数，但逻辑不变 - 有超额就降权
-    const hasExcess = currentExcess > 0 || crossExcess > 0;
-    const coeff = hasExcess ? (coeffArray[1] ?? 1.0) : 1.0;
+    let coeff: number;
+
+    if (isCurrent) {
+      // 🎯 V6.5：当前周卡，按"下一个副本"决定
+      if (shouldReduceNextCopy(currentCombo, backpack, card)) {
+        // 下一个抽的是第2张及以后，应用系数
+        coeff = coeffArray[1] ?? 0.01;
+      } else {
+        // 下一个抽的是第1张，正常概率
+        coeff = 1.0;
+      }
+    } else if (isCross) {
+      // 🎯 V6.5：跨周卡，只有已经持有至少1张时才允许出现
+      const have = backpack[card] || 0;
+      if (have >= 1) {
+        // 有至少1张跨周卡，后续副本降权
+        if (shouldReduceNextCopy(crossCombo, backpack, card)) {
+          coeff = coeffArray[1] ?? 0.01;
+        } else {
+          coeff = 1.0; // 只有1张需求，所以永远正常
+        }
+      } else {
+        // 🚫 完全禁止！不允许首张跨周卡在第一周出现
+        coeff = 0;
+      }
+    } else {
+      // 背景卡：轻度降权（可选）
+      const have = backpack[card] || 0;
+      if (have >= 1) {
+        coeff = 0.9; // 略降，不像主卡那么猛
+      } else {
+        coeff = 1.0;
+      }
+    }
 
     weightedProbs[card] = getBaseProb(card) * coeff;
   }
 
   // 幸运卡处理
   if (luckyCard) {
-    const luckyCurrentExcess = currentCombo.cards.includes(luckyCard)
-      ? getExcessCount(currentCombo, backpack, luckyCard)
-      : 0;
-    const luckyCrossExcess = crossCombo.cards.includes(luckyCard)
-      ? getExcessCount(crossCombo, backpack, luckyCard)
-      : 0;
+    const luckyIsCurrent = currentCards.has(luckyCard);
+    const luckyHave = backpack[luckyCard] || 0;
+    const luckyIsCrossWithHave = crossCards.has(luckyCard) && luckyHave >= 1;
 
-    const luckyHasExcess = luckyCurrentExcess > 0 || luckyCrossExcess > 0;
-    const luckyCoeffArray = coefficients[luckyCard] || [1.0];
-    const luckyCoeff = luckyHasExcess ? (luckyCoeffArray[1] ?? 1.0) : 1.0;
+    if (luckyIsCurrent || luckyIsCrossWithHave) {
+      const luckyCoeffArray = coefficients[luckyCard] || [1.0];
+      let luckyCoeff: number;
 
-    const luckyBonus = LUCKY_FIXED_PROB;
-    const currentTotal = Object.values(weightedProbs).reduce((a, b) => a + b, 0);
+      if (luckyIsCurrent) {
+        luckyCoeff = shouldReduceNextCopy(currentCombo, backpack, luckyCard)
+          ? (luckyCoeffArray[1] ?? 0.01)
+          : 1.0;
+      } else {
+        luckyCoeff = 1.0;
+      }
 
-    if (currentTotal > 0) {
-      const deductionRatio = luckyBonus / currentTotal;
-      for (const card of ALL_CARDS) {
-        if (card === luckyCard) {
-          weightedProbs[card] = weightedProbs[card] * luckyCoeff + luckyBonus;
-        } else {
-          weightedProbs[card] *= (1 - deductionRatio);
+      const luckyBonus = LUCKY_FIXED_PROB;
+      const currentTotal = Object.values(weightedProbs).reduce((a, b) => a + b, 0);
+
+      if (currentTotal > 0) {
+        const deductionRatio = luckyBonus / currentTotal;
+        for (const card of ALL_CARDS) {
+          if (card === luckyCard) {
+            weightedProbs[card] = weightedProbs[card] * luckyCoeff + luckyBonus;
+          } else {
+            weightedProbs[card] *= (1 - deductionRatio);
+          }
         }
       }
-    } else {
-      weightedProbs[luckyCard] = luckyBonus;
     }
   }
 
   // 归一化
   const total = Object.values(weightedProbs).reduce((a, b) => a + b, 0);
-  if (total <= 0) return 'A';
+  if (total <= 0) return currentCombo.cards[0] || 'A';
 
   const normalized: Record<string, number> = {};
   for (const card of ALL_CARDS) {
@@ -198,12 +242,9 @@ function drawOneCard(
     r -= normalized[card];
     if (r <= 0) return card;
   }
-  return 'A';
+  return currentCombo.cards[0] || 'A';
 }
 
-/**
- * 模拟两周完整游戏（多系数版）
- */
 async function simulateBothWeeks(
   setup: CardSetup,
   coefficients: Record<string, CardCoefficients>,
@@ -262,22 +303,18 @@ async function simulateBothWeeks(
   };
 }
 
-/**
- * 统计所有需要降权的卡及其超额槽位
- */
 function getCardsNeedingCoeff(setup: CardSetup): Array<{ card: string; maxExcess: number }> {
   const result: Array<{ card: string; maxExcess: number }> = [];
   const seen = new Set<string>();
 
   for (const card of ALL_CARDS) {
-    const maxExcess = getGlobalMaxExcessSlots(setup, card);
+    const maxExcess = getMaxExcessSlots(setup, card);
     if (maxExcess > 0 && !seen.has(card)) {
       seen.add(card);
       result.push({ card, maxExcess });
     }
   }
-
-  return result.sort((a, b) => a.maxExcess - b.maxExcess); // 按超额槽位从小到大排序
+  return result.sort((a, b) => a.maxExcess - b.maxExcess);
 }
 
 export interface SolverResult {
@@ -290,48 +327,32 @@ export interface SolverResult {
   finalError: number;
 }
 
-/**
- * 🔍 V6.3 多系数分层搜索
- *
- * 策略：
- * 1. 识别系统中所有需要系数的卡
- * 2. 按超额槽位数分层（槽位少的更严格）
- * 3. 使用罚分机制，槽位少的卡系数上限更低
- *
- * 简化版：两层系数
- * - 层1（超额槽位=1）：极严格，范围 0.001 ~ 0.02
- * - 层2（超额槽位≥2）：较宽松，范围 0.01 ~ 0.3
- */
 export async function solveCoefficientsAsync(
   setup: CardSetup,
   _targetRate: number = 4.0,
   onProgress?: (progress: SolverProgress) => void
 ): Promise<SolverResult> {
   const cardsNeedingCoeff = getCardsNeedingCoeff(setup);
-
-  // 分离两层
   const tier1Cards = cardsNeedingCoeff.filter(c => c.maxExcess === 1).map(c => c.card);
   const tier2Cards = cardsNeedingCoeff.filter(c => c.maxExcess >= 2).map(c => c.card);
 
-  // 两层分别搜索的范围
-  const tier1Range = [0.001, 0.002, 0.005, 0.008, 0.01, 0.015, 0.02, 0.03, 0.05];
-  const tier2Range = [0.01, 0.02, 0.03, 0.05, 0.08, 0.1, 0.15, 0.2, 0.3, 0.5];
+  // V6.5：更严格的范围，因为"下一个副本"逻辑让降权更频繁
+  const tier1Range = [0.0005, 0.001, 0.002, 0.003, 0.005, 0.008, 0.01, 0.015, 0.02];
+  const tier2Range = [0.005, 0.01, 0.015, 0.02, 0.03, 0.05, 0.08, 0.1, 0.15, 0.2];
 
-  let bestCoeff1 = 0.005;
-  let bestCoeff2 = 0.05;
+  let bestCoeff1 = 0.001;
+  let bestCoeff2 = 0.02;
   let bestW1Rate = 0;
   let bestW2Rate = 0;
   let bestTotalError = 1000;
   let iterCount = 0;
   const totalIters = tier1Range.length * tier2Range.length;
 
-  // 网格搜索两层系数组合
   for (const c1 of tier1Range) {
     for (const c2 of tier2Range) {
-      // 构建系数表
       const testCoeffs: Record<string, CardCoefficients> = {};
       for (const card of ALL_CARDS) {
-        const maxExcess = getGlobalMaxExcessSlots(setup, card);
+        const maxExcess = getMaxExcessSlots(setup, card);
         if (maxExcess === 1) {
           testCoeffs[card] = [1.0, c1];
         } else if (maxExcess >= 2) {
@@ -355,7 +376,7 @@ export async function solveCoefficientsAsync(
       iterCount++;
       if (onProgress && iterCount % 5 === 0) {
         onProgress({
-          iteration: iterCount / totalIters * 2, // 前2/3是粗网格
+          iteration: iterCount / totalIters * 2,
           totalIterations: 3,
           week1Rate: bestW1Rate,
           week2Rate: bestW2Rate,
@@ -366,13 +387,13 @@ export async function solveCoefficientsAsync(
     }
   }
 
-  // 细网格优化（在最佳点附近）
+  // 细网格
   const fine1Steps = 10;
   const fine2Steps = 10;
-  const fine1Low = Math.max(0.0005, bestCoeff1 * 0.5);
-  const fine1High = Math.min(0.1, bestCoeff1 * 2);
-  const fine2Low = Math.max(0.005, bestCoeff2 * 0.5);
-  const fine2High = Math.min(0.8, bestCoeff2 * 2);
+  const fine1Low = Math.max(0.0001, bestCoeff1 * 0.3);
+  const fine1High = Math.min(0.05, bestCoeff1 * 3);
+  const fine2Low = Math.max(0.001, bestCoeff2 * 0.5);
+  const fine2High = Math.min(0.3, bestCoeff2 * 2);
 
   for (let i = 0; i <= fine1Steps; i++) {
     for (let j = 0; j <= fine2Steps; j++) {
@@ -381,7 +402,7 @@ export async function solveCoefficientsAsync(
 
       const testCoeffs: Record<string, CardCoefficients> = {};
       for (const card of ALL_CARDS) {
-        const maxExcess = getGlobalMaxExcessSlots(setup, card);
+        const maxExcess = getMaxExcessSlots(setup, card);
         if (maxExcess === 1) {
           testCoeffs[card] = [1.0, c1];
         } else if (maxExcess >= 2) {
@@ -406,19 +427,15 @@ export async function solveCoefficientsAsync(
 
   if (onProgress) {
     onProgress({
-      iteration: 3,
-      totalIterations: 3,
-      week1Rate: bestW1Rate,
-      week2Rate: bestW2Rate,
-      error: bestTotalError,
-      isConverged: false,
+      iteration: 3, totalIterations: 3,
+      week1Rate: bestW1Rate, week2Rate: bestW2Rate,
+      error: bestTotalError, isConverged: false,
     });
   }
 
-  // 最终验证
   const finalCoeffs: Record<string, CardCoefficients> = {};
   for (const card of ALL_CARDS) {
-    const maxExcess = getGlobalMaxExcessSlots(setup, card);
+    const maxExcess = getMaxExcessSlots(setup, card);
     if (maxExcess === 1) {
       finalCoeffs[card] = [1.0, bestCoeff1];
     } else if (maxExcess >= 2) {
@@ -441,16 +458,12 @@ export async function solveCoefficientsAsync(
   };
 }
 
-/**
- * 生成系数报告（UI 兼容格式）
- */
 export function generateCoefficientReport(
   solverResult: SolverResult,
   setup: CardSetup
 ): CoefficientResult {
   const w1Needs = countCardNeeds(setup.week1.cards);
   const w2Needs = countCardNeeds(setup.week2.cards);
-
   const week1Coeffs: Record<string, CardCoefficients> = {};
   const week2Coeffs: Record<string, CardCoefficients> = {};
 
@@ -461,9 +474,7 @@ export function generateCoefficientReport(
 
     if (w1Need > 1) {
       const arr: CardCoefficients = [1.0];
-      for (let i = 1; i < w1Need; i++) {
-        arr.push(globalCoeff[1] ?? 1.0);
-      }
+      for (let i = 1; i < w1Need; i++) arr.push(globalCoeff[1] ?? 1.0);
       week1Coeffs[card] = arr;
     } else {
       week1Coeffs[card] = [1.0];
@@ -471,9 +482,7 @@ export function generateCoefficientReport(
 
     if (w2Need > 1) {
       const arr: CardCoefficients = [1.0];
-      for (let i = 1; i < w2Need; i++) {
-        arr.push(globalCoeff[1] ?? 1.0);
-      }
+      for (let i = 1; i < w2Need; i++) arr.push(globalCoeff[1] ?? 1.0);
       week2Coeffs[card] = arr;
     } else {
       week2Coeffs[card] = [1.0];
@@ -481,12 +490,8 @@ export function generateCoefficientReport(
   }
 
   return {
-    week1: week1Coeffs,
-    week2: week2Coeffs,
-    actualRates: {
-      week1: solverResult.week1Rate,
-      week2: solverResult.week2Rate,
-    },
+    week1: week1Coeffs, week2: week2Coeffs,
+    actualRates: { week1: solverResult.week1Rate, week2: solverResult.week2Rate },
     fullCollectionRate: solverResult.fullCollectionRate,
     converged: solverResult.converged,
     iterations: solverResult.iterations,

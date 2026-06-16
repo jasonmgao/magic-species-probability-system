@@ -33,28 +33,30 @@ const CARD_COLORS: Record<string, string> = {
   'F': '#52c41a', 'G': '#52c41a', 'H': '#52c41a', 'I': '#52c41a', 'J': '#52c41a',
 };
 
-// V6默认配置：AAB和AAA
+// V6.5默认配置：AAB(3张)和AACC(4张)
+// 3张卡默认用2次抽奖，4-5张卡用4次抽奖
 const DEFAULT_SETUP: CardSetup = {
   week1: {
     name: '第一周',
-    cards: ['A', 'A', 'B'], // AAB: 基础卡A(x2) + 扩展卡B(x1)
+    cards: ['A', 'A', 'B'], // AAB: 基础卡A(x2) + 扩展卡B(x1) = 3张卡
     deadline: 7,
   },
   week2: {
     name: '第二周',
-    cards: ['C', 'C', 'C'], // CCC: 基础卡C(x2) + 扩展卡C(x1)
+    cards: ['C', 'C', 'D', 'E'], // CCDE: 基础卡C(x2) + 扩展D(x1) + 扩展E(x1) = 4张卡
     deadline: 14,
   },
-  dailyDraws: 4,
-  // V6新增：基础卡（每张都是基础卡，最终合并成总数）
+  dailyDraws: 3,  // V6.5: 默认3次，卡少时自动建议更少
+  // V6新增：基础卡
   baseCards: {
-    week1: 'A', // 基础卡A固定x2
-    week2: 'C', // 基础卡C固定x2
+    week1: 'A',
+    week2: 'C',
   },
 };
 
-const MIN_X1_CARD = 1;   // 至少1张x1的卡（加上基础卡x2 = 最小3张）
-const MAX_EXTRA_CARDS = 3; // 最多3张扩展卡，加上基础卡x2 = 最大5张
+// V6.5：支持3-5张卡，但卡越少需要越少的每日抽奖次数
+const MIN_EXTRA_CARDS = 1;   // 至少1张扩展卡（加上基础卡x2 = 最小3张）- 老板要求
+const MAX_EXTRA_CARDS = 3;   // 最多3张扩展卡（加上基础卡x2 = 最大5张）
 const MIN_DAILY_DRAWS = 1;
 const MAX_DAILY_DRAWS = 10;
 
