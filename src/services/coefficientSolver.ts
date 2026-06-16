@@ -236,10 +236,11 @@ async function simulateWeek(
       const sched = generateSchedule().slice(0, deadline);
       const luckySet = new Set<string>();
 
+      const dailyDraws = setup.dailyDraws || 4; // 默认为4次
       for (let d = 1; d <= deadline; d++) {
         const dt = sched[d - 1];
         const lc = getLuckyCard(dt, allCards, luckySet);
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < dailyDraws; i++) {
           const c = drawOneCard(bag, setup, fullCoeffs, d, dt, lc);
           bag[c] = (bag[c] || 0) + 1;
         }
@@ -589,33 +590,35 @@ async function simulateBothWeeks(
   for (let chunk = 0; chunk < chunks; chunk++) {
     const currentChunkSize = chunk === chunks - 1 ? lastChunkSize : chunkSize;
 
-    for (let t = 0; t < currentChunkSize; t++) {
-      // Week 1 simulation (7 days)
-      const bag1: Record<string, number> = {};
-      const sched1 = generateSchedule().slice(0, 7);
-      const lucky1 = new Set<string>();
-      for (let d = 1; d <= 7; d++) {
-        const dt = sched1[d - 1];
-        const lc = getLuckyCard(dt, allCards, lucky1);
-        for (let i = 0; i < 4; i++) {
-          const c = drawOneCard(bag1, setup, fullCoeffs, d, dt, lc);
-          bag1[c] = (bag1[c] || 0) + 1;
-        }
-      }
-      if (checkComboComplete(setup.week1, bag1)) w1++;
+        const dailyDraws = setup.dailyDraws || 4; // 使用可变每日抽奖次数
 
-      // Full 2 weeks simulation (14 days)
-      const bag2: Record<string, number> = {};
-      const sched2 = generateSchedule();
-      const lucky2a = new Set<string>(), lucky2b = new Set<string>();
-      for (let d = 1; d <= 14; d++) {
-        const dt = sched2[d - 1];
-        const lc = getLuckyCard(dt, allCards, d <= 7 ? lucky2a : lucky2b);
-        for (let i = 0; i < 4; i++) {
-          const c = drawOneCard(bag2, setup, fullCoeffs, d, dt, lc);
-          bag2[c] = (bag2[c] || 0) + 1;
+      for (let t = 0; t < currentChunkSize; t++) {
+        // Week 1 simulation (7 days)
+        const bag1: Record<string, number> = {};
+        const sched1 = generateSchedule().slice(0, 7);
+        const lucky1 = new Set<string>();
+        for (let d = 1; d <= 7; d++) {
+          const dt = sched1[d - 1];
+          const lc = getLuckyCard(dt, allCards, lucky1);
+          for (let i = 0; i < dailyDraws; i++) {
+            const c = drawOneCard(bag1, setup, fullCoeffs, d, dt, lc);
+            bag1[c] = (bag1[c] || 0) + 1;
+          }
         }
-      }
+        if (checkComboComplete(setup.week1, bag1)) w1++;
+
+        // Full 2 weeks simulation (14 days)
+        const bag2: Record<string, number> = {};
+        const sched2 = generateSchedule();
+        const lucky2a = new Set<string>(), lucky2b = new Set<string>();
+        for (let d = 1; d <= 14; d++) {
+          const dt = sched2[d - 1];
+          const lc = getLuckyCard(dt, allCards, d <= 7 ? lucky2a : lucky2b);
+          for (let i = 0; i < dailyDraws; i++) {
+            const c = drawOneCard(bag2, setup, fullCoeffs, d, dt, lc);
+            bag2[c] = (bag2[c] || 0) + 1;
+          }
+        }
       if (checkComboComplete(setup.week2, bag2)) w2++;
       if (checkFullCollection(bag2)) fc++;
     }

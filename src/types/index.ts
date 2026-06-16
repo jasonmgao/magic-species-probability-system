@@ -24,6 +24,8 @@ export interface WeeklyCombo {
 export interface CardSetup {
   week1: WeeklyCombo;
   week2: WeeklyCombo;
+  /** 每日抽奖次数（默认为4） */
+  dailyDraws: number;
 }
 
 /**

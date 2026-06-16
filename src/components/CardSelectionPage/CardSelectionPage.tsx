@@ -5,11 +5,11 @@
 import { useState, useCallback } from 'react';
 import {
   Row, Col, Card as AntCard, Button, Space, Typography,
-  message, Progress, Table, Tag, Select, Divider, Alert, Tabs,
+  message, Progress, Table, Tag, Select, Divider, Alert, Tabs, InputNumber,
 } from 'antd';
 import {
   CalculatorOutlined, PlusOutlined, DeleteOutlined, CheckCircleOutlined,
-  TrophyOutlined, QuestionCircleOutlined, TableOutlined,
+  TrophyOutlined, QuestionCircleOutlined, TableOutlined, GiftOutlined,
 } from '@ant-design/icons';
 import type { CardSetup, WeeklyCombo, CoefficientResult, SolverProgress, CardCoefficients } from '@/types';
 import {
@@ -39,13 +39,16 @@ const DEFAULT_SETUP: CardSetup = {
   },
   week2: {
     name: '第二周',
-    cards: ['C', 'C', 'C', 'D', 'E'],
+    cards: ['C', 'D', 'E'],
     deadline: 14,
   },
+  dailyDraws: 4,
 };
 
 const MIN_CARDS = 2;
 const MAX_CARDS = 5;
+const MIN_DAILY_DRAWS = 1;
+const MAX_DAILY_DRAWS = 10;
 
 interface CardSelectionPageProps {
   onNavigateToConfig?: () => void;
@@ -100,6 +103,11 @@ export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps
       ...prev,
       [week]: { ...prev[week], cards: prev[week].cards.map((c, i) => i === index ? cardId : c) },
     }));
+    if (result) setResult(null);
+  }, [result]);
+
+  const updateDailyDraws = useCallback((draws: number) => {
+    setSetup(prev => ({ ...prev, dailyDraws: draws }));
     if (result) setResult(null);
   }, [result]);
 
@@ -260,6 +268,26 @@ export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps
             <Space direction="vertical" style={{ width: '100%' }} size="large">
               {renderWeekConfig('week1', setup.week1, '#52c41a')}
               {renderWeekConfig('week2', setup.week2, '#1890ff')}
+
+              <div style={{ padding: 12, background: '#fff7e6', borderRadius: 8, border: '1px solid #ffa940' }}>
+                <Space align="center">
+                  <GiftOutlined style={{ color: '#fa8c16', fontSize: 20 }} />
+                  <Text>每日抽奖次数</Text>
+                  <InputNumber
+                    min={MIN_DAILY_DRAWS}
+                    max={MAX_DAILY_DRAWS}
+                    value={setup.dailyDraws}
+                    onChange={(v) => v && updateDailyDraws(v)}
+                    addonAfter="次/天"
+                    size="small"
+                    style={{ width: 100 }}
+                  />
+                </Space>
+                <div style={{ marginTop: 8, fontSize: 13, color: '#888' }}>
+                  单周期望抽卡数：{setup.dailyDraws * 7}（第一周） / {setup.dailyDraws * 14}（两周期），
+                  卡越少每日抽奖次数应越大才能完成4%
+                </div>
+              </div>
 
               {/* 进度条 */}
               {isCalculating && progress && (
