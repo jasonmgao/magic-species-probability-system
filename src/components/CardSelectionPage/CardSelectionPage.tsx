@@ -30,7 +30,7 @@ const TYPE_LABELS: Record<string, string> = { magic: '神奇', rare: '稀有', c
 
 const DEFAULT_SETUP: CardSetup = {
   week1: { name: '第一周', cards: ['A', 'A', 'B'], deadline: 7 },
-  week2: { name: '第二周', cards: ['C', 'D', 'E'], deadline: 14 },
+  week2: { name: '第二周', cards: ['H', 'H', 'I'], deadline: 14 },
   dailyDraws: 4,
 };
 
