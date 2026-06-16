@@ -168,18 +168,14 @@ function drawOneCard(
         coeff = 1.0;
       }
     } else if (isCross) {
-      // 🎯 V6.5：跨周卡，首张极难出（0.001=0.1%倍率），有1张后才正常进入降权逻辑
-      const have = backpack[card] || 0;
-      if (have >= 1) {
-        // 有至少1张跨周卡，后续副本按正常降权逻辑
-        if (shouldReduceNextCopy(crossCombo, backpack, card)) {
-          coeff = coeffArray[1] ?? 0.01;
-        } else {
-          coeff = 1.0;
-        }
+      // 🎯 V6.5修正：跨周卡首张正常出，有1张后才卡第2张
+      // 这样既防囤积（第2张极难），又保证可获得性（首张正常）
+      if (shouldReduceNextCopy(crossCombo, backpack, card)) {
+        // 有1张跨周卡，下一个是第2张 → 极难
+        coeff = coeffArray[1] ?? 0.001;
       } else {
-        // 首张跨周卡：极低概率（0.1%基础概率），几乎不可能但不等于0
-        coeff = 0.001; // 0.1%乘数，基础14% → 0.014%
+        // 没有或只有1张需求 → 首张正常出
+        coeff = 1.0;
       }
     } else {
       // 背景卡：轻度降权（可选）
