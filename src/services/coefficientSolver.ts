@@ -438,7 +438,7 @@ export async function solveCoefficientsAsync(
   }
 
   // ========== 最终结果 ==========
-  const finalW2Coeffs = createUniformCoefficients(w2Needs, w2BestCoeff);
+  const finalW2Coeffs = createUniformCoefficients(w2Needs, bestW2Coeff);
   const final = await simulateBothWeeks(setup, w1Coeffs, finalW2Coeffs, 12000);
 
   return {
