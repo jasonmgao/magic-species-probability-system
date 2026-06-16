@@ -383,13 +383,13 @@ export async function solveCoefficientsAsync(
     }
   }
 
-  // 细网格（简化：5×5=25次，添加进度更新）
-  const fine1Steps = 5;
-  const fine2Steps = 5;
-  const fine1Low = Math.max(0.0001, bestCoeff1 * 0.5);
-  const fine1High = Math.min(0.05, bestCoeff1 * 2);
-  const fine2Low = Math.max(0.001, bestCoeff2 * 0.5);
-  const fine2High = Math.min(0.3, bestCoeff2 * 2);
+  // 细网格（8×8=64次，添加进度更新，范围±3倍确保找到最优）
+  const fine1Steps = 8;
+  const fine2Steps = 8;
+  const fine1Low = Math.max(0.0001, bestCoeff1 * 0.2);
+  const fine1High = Math.min(0.1, bestCoeff1 * 5);
+  const fine2Low = Math.max(0.001, bestCoeff2 * 0.2);
+  const fine2High = Math.min(0.5, bestCoeff2 * 5);
 
   for (let i = 0; i <= fine1Steps; i++) {
     for (let j = 0; j <= fine2Steps; j++) {
@@ -408,7 +408,7 @@ export async function solveCoefficientsAsync(
         }
       }
 
-      const res = await simulateBothWeeks(setup, testCoeffs, 2000);
+      const res = await simulateBothWeeks(setup, testCoeffs, 3000);
       const error = Math.abs(res.week1Rate - 4) + Math.abs(res.week2Rate - 4);
 
       if (error < bestTotalError) {
@@ -419,11 +419,11 @@ export async function solveCoefficientsAsync(
         bestW2Rate = res.week2Rate;
       }
 
-      // 🆕 细网格进度更新
+      // 🆕 细网格进度更新（每8次更新一次避免太频繁）
       const fineProgress = (i * (fine2Steps + 1) + j) / ((fine1Steps + 1) * (fine2Steps + 1));
-      if (onProgress) {
+      if (onProgress && ((i * 9 + j) % 8 === 0 || fineProgress > 0.95)) {
         onProgress({
-          iteration: 2 + fineProgress * 0.8, // 2.0~2.8 是细网格
+          iteration: 2 + fineProgress * 0.8,
           totalIterations: 3,
           week1Rate: bestW1Rate,
           week2Rate: bestW2Rate,
