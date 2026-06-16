@@ -30,7 +30,7 @@ export async function runSimulation(
   onProgress?: (progress: SolverProgress) => void
 ): Promise<CoefficientResult> {
   const solverResult = await solveCoefficientsAsync(setup, 4.0, onProgress);
-  return generateCoefficientReport(solverResult);
+  return generateCoefficientReport(solverResult, setup);
 }
 
 /**
