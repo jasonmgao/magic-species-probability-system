@@ -49,8 +49,16 @@ function createUniformCoefficients(
   needs: Map<string, number>,
   coeff: number
 ): Record<string, CardCoefficients> {
+  // 🐛 CRITICAL FIX: 需要为所有卡创建系数，不只是当周需要的！
+  // 否则其他周的卡被抽到时没有降权
   const result: Record<string, CardCoefficients> = {};
 
+  // 先给所有卡默认系数 [1.0]（持0张时不降权，持任何数量都不降权）
+  for (const card of ALL_CARDS) {
+    result[card] = [1.0];
+  }
+
+  // 然后给当周需要的卡设置实际降权系数
   for (const [cardId, needCount] of needs.entries()) {
     const coeffs: CardCoefficients = [1.0]; // 持0张时系数为1
 
