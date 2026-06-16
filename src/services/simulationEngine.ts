@@ -55,48 +55,57 @@ export function generateCases(
 
   const week1CardList = Array.from(week1Needs.entries());
   if (week1CardList.length > 0) {
-    const [firstCard] = week1CardList[0];
-    const midBag: Record<string, number> = { [firstCard]: 1 };
+    const [firstCard, need] = week1CardList[0];
+    // V6: 记录超额持有（超过第1张的部分）
+    const heldCount = 2; // 场景：假设已有2张
+    const excessCount = Math.max(0, Math.min(heldCount - 1, need - 1)); // 超额数
+    const midBag: Record<string, number> = { [firstCard]: heldCount };
     const firstCardCoeffs = coefficientResult.week1[firstCard];
-    const coeff1 = firstCardCoeffs ? firstCardCoeffs[1] : 0.05;
+    // V6: 只要有超额持有，就应用降权系数
+    const coeff1 = excessCount > 0 ? (firstCardCoeffs ? firstCardCoeffs[1] : 0.05) : 1.0;
 
     cases.push({
-      name: '第一周进行中',
-      description: `已持有 ${firstCard}×1，持有 2 张时降权系数 ${(coeff1 * 100).toFixed(2)}%`,
+      name: '第一周(V6超额降权)',
+      description: `持有 ${firstCard}×${heldCount}，需求 ${need} 张。超额副本=${excessCount}，降权系数 ${(coeff1 * 100).toFixed(1)}%`,
       initialBag: midBag,
       dayType: 'RARE',
       luckyCard: firstCard,
-      expectedSuccess: '降权生效，后续抽卡概率降低',
+      expectedSuccess: `V6: 第1张${firstCard}不降权，第2张起才降权`,
     });
   }
 
   const almostDoneBag: Record<string, number> = {};
+  let totalExcess = 0;
   for (const [card, need] of week1Needs.entries()) {
-    almostDoneBag[card] = Math.max(1, need - 1);
+    almostDoneBag[card] = need; // 持有刚好够
+    totalExcess += Math.max(0, need - 1); // V6: 每张卡的第2张起都超额
   }
   cases.push({
-    name: '第一周差 1 张',
-    description: '持有大部分第一周的卡，接近完成',
+    name: '第一周刚好完成',
+    description: `V6: 所有卡精确持有，超标副本数=${totalExcess}张，新卡获取极难`,
     initialBag: almostDoneBag,
     dayType: 'MAGIC',
     luckyCard: 'A',
-    expectedSuccess: '持有越多，降权越严格',
+    expectedSuccess: '所有超额副本都处于降权状态，最后1张最难拿',
   });
 
   const week2CardList = Array.from(week2Needs.entries());
   if (week2CardList.length > 0) {
-    const [w2FirstCard] = week2CardList[0];
-    const w2MidBag: Record<string, number> = { [w2FirstCard]: 1 };
+    const [w2FirstCard, w2Need] = week2CardList[0];
+    // V6场景：第二周跨周持有（第一周存了下周卡）
+    const crossHeld = 2; // 第一周存了2张给第二周
+    const excessCount = Math.max(0, Math.min(crossHeld - 1, w2Need - 1));
+    const w2MidBag: Record<string, number> = { [w2FirstCard]: crossHeld };
     const w2Coeffs = coefficientResult.week2[w2FirstCard];
-    const w2Coeff1 = w2Coeffs ? w2Coeffs[1] : 0.03;
+    const w2Coeff1 = excessCount > 0 ? (w2Coeffs ? w2Coeffs[1] : 0.03) : 1.0;
 
     cases.push({
-      name: '第二周进行中',
-      description: `已持有 ${w2FirstCard}×1，持有 2 张时降权系数 ${(w2Coeff1 * 100).toFixed(2)}%`,
+      name: '第二周跨周压制(V6)',
+      description: `第二周开始前已持有 ${w2FirstCard}×${crossHeld}（跨周储存）。超额副本=${excessCount}，降权系数 ${(w2Coeff1 * 100).toFixed(1)}%`,
       initialBag: w2MidBag,
       dayType: 'RARE',
       luckyCard: w2FirstCard,
-      expectedSuccess: '第二周系数通常比第一周更严格',
+      expectedSuccess: 'V6跨周机制：提前存卡会被降权，无法轻松偷跑',
     });
   }
 

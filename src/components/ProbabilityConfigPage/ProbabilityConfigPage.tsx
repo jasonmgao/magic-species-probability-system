@@ -1,10 +1,10 @@
 /**
- * 📖 教程页面 - 降权系数使用指南
- * 通俗解释两组权重系数怎么用、概率怎么配
+ * 📖 教程页面 - V6降权系数使用指南
+ * 通俗解释V6新版：强制基础卡x2 + 按槽位降权机制
  */
 
 import { Card as AntCard, Typography, Space, Table, Tag, Steps, Alert, Divider, Button } from 'antd';
-import { ArrowLeftOutlined, BookOutlined, CalculatorOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, BookOutlined, CalculatorOutlined, CheckCircleOutlined, ThunderboltOutlined, StarOutlined } from '@ant-design/icons';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -18,224 +18,212 @@ export function ProbabilityConfigPage({ onNavigateToSelection }: ProbabilityConf
       {/* 标题区 */}
       <AntCard style={{ marginBottom: 24, textAlign: 'center' }}>
         <BookOutlined style={{ fontSize: 48, color: '#1890ff', marginBottom: 16 }} />
-        <Title level={2}>降权系数使用指南</Title>
+        <Title level={2}>V6 降权系数使用指南</Title>
         <Paragraph type="secondary" style={{ fontSize: 16, maxWidth: 700, margin: '0 auto' }}>
-          从零开始理解：两组权重系数是什么、怎么用、怎么配概率
+          V6新版机制：强制基础卡x2 + 按槽位精准降权（只对超过第1张的卡生效）
         </Paragraph>
+        <Tag color="blue" style={{ fontSize: 14, padding: '4px 12px' }}>当前版本：V6（2024年6月）</Tag>
       </AntCard>
 
-      {/* 核心概念 */}
-      <AntCard title="📌 核心概念：什么是降权系数？" style={{ marginBottom: 24 }}>
+      {/* V6核心改版说明 */}
+      <AntCard title="🆕 V6核心改版" style={{ marginBottom: 24 }}>
         <Alert
-          message="一句话理解"
-          description="降权系数 = '惩罚系数'。玩家持有的某周卡牌越多，抽到该周卡牌的概率就越低，避免玩家太容易集齐。"
+          message="V6相比V5的三大变化"
+          description={
+            <ul style={{ margin: 0, paddingLeft: 20 }}>
+              <li><strong>强制基础x2</strong>：每个卡组必须有张卡是x2起步（只能修改类型，数量固定）</li>
+              <li><strong>按槽位降权</strong>：只对卡组中【超过第1张】的卡应用降权（不是按持有总数）</li>
+              <li><strong>幸运卡降权</strong>：幸运卡如果属于某周卡组，同样受降权影响</li>
+            </ul>
+          }
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
         />
 
-        <Title level={5}>🎯 为什么要降权？</Title>
+        <Title level={5}>为什么这样设计？</Title>
         <Paragraph>
-          想象一下：如果不降权，玩家抽28次（14天×2次），很容易就能集齐3张卡。
-          通过<strong>降权系数</strong>，我们把完成率控制在约<strong>4%</strong>，
-          让集齐成为一件有挑战性、值得炫耀的事。
+          旧版本按"持有总数"统一降权，导致卡组设计受限（比如AAB和AAA的影响范围不同）。
+          V6通过"按槽位降权"，让<strong>每张卡从第2张副本开始</strong>才受影响，
+          这样AAA（对第2、3张A降权）和AAB（只对第2张A降权）就有明显不同的难度曲线，
+          设计者可以更灵活地调整卡组成。
         </Paragraph>
+      </AntCard>
 
-        <Divider />
-
-        <Title level={5}>📊 两组系数是什么？</Title>
+      {/* 卡组规则 */}
+      <AntCard title="🎴 卡组配置规则" style={{ marginBottom: 24 }}>
         <Table
           size="small"
           dataSource={[
-            { key: '1', name: '第一周系数', when: '第1-7天', what: '控制第一周卡牌的掉落概率', example: 'AAB组合，持1张时系数0.15' },
-            { key: '2', name: '第二周系数', when: '第8-14天', what: '控制第二周卡牌的掉落概率', example: 'CDE组合，持2张时系数0.08' },
+            { key: '1', rule: '总卡数', desc: '3-5张（含基础卡x2 + 扩展卡1-3张）', note: '最少3张才能满足"至少有2张相同"' },
+            { key: '2', rule: '基础卡', desc: '必须选1张卡作为"基础"，该卡固定x2', note: '界面中有⚡标记，可改类型但数量固定' },
+            { key: '3', rule: '扩展卡', desc: '1-3张可选，每张可调整类型和数量（1x/2x/3x）', note: '点击 +/- 调整同一卡的数量' },
+            { key: '4', rule: '同卡限制', desc: '同一卡组内，一张卡最多可5张（A×5或C×3等）', note: '总卡数不超过5张即可' },
           ]}
           columns={[
-            { title: '系数组', dataIndex: 'name', key: 'name', width: 120 },
-            { title: '生效时间', dataIndex: 'when', key: 'when', width: 120 },
-            { title: '作用', dataIndex: 'what', key: 'what' },
-            { title: '举例', dataIndex: 'example', key: 'example' },
+            { title: '类别', dataIndex: 'rule', key: 'rule', width: 120 },
+            { title: '说明', dataIndex: 'desc', key: 'desc' },
+            { title: '备注', dataIndex: 'note', key: 'note' },
           ]}
           pagination={false}
         />
       </AntCard>
 
-      {/* 使用步骤 */}
-      <AntCard title="📝 使用步骤：系数怎么用？" style={{ marginBottom: 24 }}>
-        <Steps
-          direction="vertical"
-          current={-1}
-          items={[
-            {
-              title: '确定卡组组合',
-              description: (
-                <div style={{ marginTop: 8 }}>
-                  <Text>先决定两周分别用什么卡。例如：</Text>
-                  <ul>
-                    <li>第一周：AAB（需要2张A + 1张B，共3个位置）</li>
-                    <li>第二周：CCC（需要3张C，共3个位置）</li>
-                  </ul>
-                  <Tag color="blue">提示：卡越少越难集齐，需要更高的每日抽奖次数</Tag>
-                </div>
-              ),
-            },
-            {
-              title: '系统自动计算系数',
-              description: (
-                <div style={{ marginTop: 8 }}>
-                  <Text>点击【开始测算】，系统会：</Text>
-                  <ol>
-                    <li>模拟成千上万次玩家抽卡过程</li>
-                    <li>调整系数让第一周完成率 ≈ 4%</li>
-                    <li>调整系数让第二周完成率 ≈ 4%</li>
-                  </ol>
-                  <Text type="warning">系数会自动显示在结果页，不需要手算！</Text>
-                </div>
-              ),
-            },
-            {
-              title: '按持有数应用系数',
-              description: (
-                <div style={{ marginTop: 8 }}>
-                  <Text>系统每一天抽卡时，会检查玩家<strong>背包里总共持有几张该周卡</strong>（不是单种卡）：</Text>
-                  <Table
-                    size="small"
-                    style={{ marginTop: 8, maxWidth: 500 }}
-                    dataSource={[
-                      { hold: 0, coeff: '1.0', desc: '还没该周卡，正常概率' },
-                      { hold: 1, coeff: '0.1~0.5', desc: '有1张了，概率降到10%~50%' },
-                      { hold: 2, coeff: '0.05~0.3', desc: '有2张了，概率再降' },
-                      { hold: '≥3', coeff: '0', desc: '已集齐，该周卡不出' },
-                    ]}
-                    columns={[
-                      { title: '持有数', dataIndex: 'hold', key: 'hold', width: 80 },
-                      { title: '系数示例', dataIndex: 'coeff', key: 'coeff', width: 100 },
-                      { title: '效果', dataIndex: 'desc', key: 'desc' },
-                    ]}
-                    pagination={false}
-                  />
-                </div>
-              ),
-            },
-            {
-              title: '跨周关联（V5新特性）',
-              description: (
-                <div style={{ marginTop: 8 }}>
-                  <Text>关键设计：<strong>两周卡牌互相压制</strong></Text>
-                  <ul>
-                    <li>第一周时，如果玩家背包里有很多C（下周卡），C的概率也会降</li>
-                    <li>这是为了防止玩家第一周"偷跑"存太多下周卡，导致第二周太容易完成</li>
-                  </ul>
-                  <Tag color="green">结果：两周完成率都被控在4%左右，公平且有挑战性</Tag>
-                </div>
-              ),
-            },
-          ]}
-        />
-      </AntCard>
-
-      {/* 概率计算原理 */}
-      <AntCard title="🔢 概率是怎么算的？（选读）" style={{ marginBottom: 24 }}>
+      {/* 降权机制详解 */}
+      <AntCard title="⚡ V6降权机制详解" style={{ marginBottom: 24 }}>
         <Alert
-          message="不需要手动计算！系统每天自动执行以下步骤"
-          type="info"
-          showIcon
-          style={{ marginBottom: 16 }}
-        />
-
-        <Title level={5}>Step 1：基础概率</Title>
-        <Paragraph>每张卡有固定的"稀有度"和基础概率：</Paragraph>
-        <Table
-          size="small"
-          style={{ maxWidth: 400, marginBottom: 16 }}
-          dataSource={[
-            { card: '神奇卡（A）', base: '2%', note: '最稀有' },
-            { card: '稀有卡（B,C,D,E）', base: '7%', note: '4张均分' },
-            { card: '普通卡（F,G,H,I,J）', base: '14%', note: '5张均分' },
-          ]}
-          columns={[
-            { title: '卡类型', dataIndex: 'card', key: 'card' },
-            { title: '基础概率', dataIndex: 'base', key: 'base' },
-            { title: '说明', dataIndex: 'note', key: 'note' },
-          ]}
-          pagination={false}
-        />
-
-        <Divider style={{ margin: '12px 0' }} />
-
-        <Title level={5}>Step 2：应用降权系数</Title>
-        <Paragraph>
-          <Text code>加权概率 = 基础概率 × 降权系数</Text>
-        </Paragraph>
-        <Text type="secondary">举例：A卡基础2%，持有1张时系数0.15 → 加权概率 = 2% × 0.15 = 0.3%</Text>
-
-        <Divider style={{ margin: '12px 0' }} />
-
-        <Title level={5}>Step 3：归一化</Title>
-        <Paragraph>
-          所有卡的加权概率加起来可能不等于100%，所以需要按比例缩放，让最终概率总和严格等于100%。
-        </Paragraph>
-        <Alert
-          message="关键效果"
-          description="当A/B被大幅降权时，C/D/E等的相对概率会上升，但它们之间保持原来的比例关系。"
+          message="核心原则：只对【超额副本】降权"
+          description="每张卡的第一张（第1个副本）永远不占降权槽，从第2张开始才计入降权计算。"
           type="warning"
           showIcon
-        />
-      </AntCard>
-
-      {/* 完整案例 */}
-      <AntCard title="📚 完整案例：AAB / CCC 组合" style={{ marginBottom: 24 }}>
-        <Alert
-          message="案例配置"
-          description="每日抽奖4次 | 第一周AAB（2张A+1张B）| 第二周CCC（3张C）"
-          type="info"
-          showIcon
           style={{ marginBottom: 16 }}
         />
 
-        <Title level={5}>🎴 场景：第3天，背包 {'{A:1, C:1}'}</Title>
-        <Paragraph>
-          <Tag color="blue">当日类型：普通日</Tag>
-          <Tag color="purple">幸运卡：F（普通卡，1.2%固定）</Tag>
-        </Paragraph>
-
-        <Title level={5}>计算过程</Title>
+        <Title level={5}>不同卡组的降权点</Title>
         <Table
           size="small"
           dataSource={[
-            { key: '1', card: 'A', type: '第一周', base: '2%', held: 1, coeff: 0.12, weighted: '0.24%' },
-            { key: '2', card: 'B', type: '第一周', base: '7%', held: 0, coeff: 1.0, weighted: '7.00%' },
-            { key: '3', card: 'C', type: '第二周', base: '7%', held: 1, coeff: 0.18, weighted: '1.26%' },
-            { key: '4', card: 'D/E', type: '填充卡', base: '7%×2', held: '-', coeff: 1.0, weighted: '14.00%' },
-            { key: '5', card: 'F(幸运)', type: '幸运卡', base: '-', held: '-', coeff: '-', weighted: '1.20%' },
-            { key: '6', card: 'G/H/I/J', type: '填充卡', base: '14%×4', held: '-', coeff: 1.0, weighted: '56.00%' },
+            { key: '1', combo: 'AAB (基础A+扩展B)', slots: '1个降权点', detail: '第2张A需要降权，B只有1张无降权', impact: '单点难度' },
+            { key: '2', combo: 'AAA (基础A+扩展A×2)', slots: '2个降权点', detail: '第2张A和第3张A都需要降', impact: '双重压制' },
+            { key: '3', combo: 'AABB (基础A+扩展A+扩展B)', slots: '2个降权点', detail: '第2张A和第2张B各自降权', impact: '均衡难度' },
+            { key: '4', combo: 'AAAA (基础A+扩展A×3)', slots: '3个降权点', detail: '第2/3/4张A全部降权', impact: '极高难度' },
           ]}
           columns={[
-            { title: '卡', dataIndex: 'card', key: 'card', width: 100 },
-            { title: '归属', dataIndex: 'type', key: 'type', width: 100 },
-            { title: '基础概率', dataIndex: 'base', key: 'base', width: 100 },
-            { title: '持有数', dataIndex: 'held', key: 'held', width: 80 },
-            { title: '系数', dataIndex: 'coeff', key: 'coeff', width: 80 },
-            { title: '加权后', dataIndex: 'weighted', key: 'weighted', render: v => <Tag>{v}</Tag> },
+            { title: '组合示例', dataIndex: 'combo', key: 'combo', width: 240 },
+            { title: '降权槽位', dataIndex: 'slots', key: 'slots', width: 120 },
+            { title: '具体说明', dataIndex: 'detail', key: 'detail' },
+            { title: '难度特征', dataIndex: 'impact', key: 'impact', width: 100 },
           ]}
           pagination={false}
         />
 
         <Divider style={{ margin: '16px 0' }} />
 
-        <Title level={5}>📊 最终概率（归一化后）</Title>
-        <Space direction="vertical" style={{ width: '100%' }}>
-          <Text><Tag color="purple">A</Tag> 0.24 / 79.7 = <strong>0.30%</strong>（极难出，因为已有1张A）</Text>
-          <Text><Tag color="blue">B</Tag> 7.0 / 79.7 = <strong>8.78%</strong></Text>
-          <Text><Tag color="blue">C</Tag> 1.26 / 79.7 = <strong>1.58%</strong>（跨周降权，已有1张C）</Text>
-          <Text><Tag>D/E</Tag> 14.0 / 79.7 = <strong>17.56%</strong></Text>
-          <Text><Tag color="green">F(幸运)</Tag> 1.2 / 79.7 = <strong>1.51%</strong></Text>
-          <Text><Tag color="green">G-J</Tag> 56.0 / 79.7 = <strong>70.27%</strong>（瓜分大部分概率）</Text>
-        </Space>
+        <Title level={5}>降权系数的应用逻辑</Title>
+        <Steps
+          direction="vertical"
+          current={-1}
+          items={[
+            {
+              title: '确认卡组需求',
+              description: '例如 AAA 表示需要3张A卡，第2、3张是降权点',
+            },
+            {
+              title: '检查背包持有',
+              description: '玩家当前有2张A，超过第1张的1个副本',
+            },
+            {
+              title: '计算超额数',
+              description: '超额数 = max(0, 持有数 - 1) = 1，但至少不超过该卡的降权槽位总数',
+            },
+            {
+              title: '应用降权系数',
+              description: '超额数 > 0 时，该卡应用降权系数（否则系数1.0）',
+            },
+          ]}
+        />
+      </AntCard>
+
+      {/* 幸运卡规则 */}
+      <AntCard title="🌟 幸运卡规则（V6新版）" style={{ marginBottom: 24 }}>
+        <Alert
+          message="幸运卡也受降权影响！"
+          description={
+            <div>
+              V6之前，幸运卡固定1.2%概率，不受持有数影响。<br/>
+              V6开始，如果幸运卡属于某周的卡组，那么在计算其概率加成前，<strong>先应用该周的降权系数</strong>。
+            </div>
+          }
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+
+        <Paragraph>
+          <strong>示例场景：</strong>第二周卡组是 AAA，今天是魔法日（幸运卡=A）。<br/>
+          - V5旧版：无论背包里有多少A，幸运卡的A都固定1.2%额外加成。<br/>
+          - V6新版：如果背包已有3张A（超额降权），幸运卡的A在加1.2%之前先应用0.1x系数，
+          导致实际加成变成0.12%，大幅降低第一天补给的价值。
+        </Paragraph>
+
+        <Tag color="orange">平衡性影响</Tag>
+        <Text>这让"偷跑屯卡"的磨肯再痛苦一些，需要更高技巧才能控制节奏。</Text>
+      </AntCard>
+
+      {/* 跨周关联 */}
+      <AntCard title="🔗 跨周关联（保留）" style={{ marginBottom: 24 }}>
+        <Paragraph>
+          V6保留V5的跨周压制机制：
+        </Paragraph>
+        <ul>
+          <li>第一周抽卡时，如果背包里有很多第二周的卡（如C×3），这些C同样占用降权槽位</li>
+          <li>第二周抽卡时，第一周的卡虽然已经"完成"，但持有数仍然计入降权计算</li>
+        </ul>
+        <Alert
+          message="设计目标"
+          description="防止玩家通过第一周疯狂抽第二周卡，导致第二周过于容易完成。两周之间需要取舍。"
+          type="success"
+          showIcon
+        />
+      </AntCard>
+
+      {/* 完整案例 */}
+      <AntCard title="📚 完整案例：AAB / AAA 组合" style={{ marginBottom: 24 }}>
+        <Alert
+          message="案例配置"
+          description="每日抽奖4次 | 第一周 AAB（基础Ax2 + 扩展Bx1）| 第二周 AAA（基础Ax2 + 扩展Ax2）"
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+
+        <Title level={5}>🎴 场景：第3天，背包 {'{A:2, 来自第一周的A完成, B:1}'}</Title>
+        <Paragraph>
+          <Tag color="blue">当日类型：普通日</Tag>
+          <Tag color="purple">幸运卡：无</Tag>
+        </Paragraph>
+
+        <Title level={5}>第一周抽卡计算（以A为例）</Title>
+        <Table
+          size="small"
+          style={{ marginBottom: 16 }}
+          dataSource={[
+            { key: '1', card: 'A(第1张)', config: '基础卡第1张', held: 1, excess: 0, coeff: '1.0(不降)', base: '2%', final: '2%' },
+            { key: '2', card: 'A(第2张)', config: '基础卡第2张（超额位）', held: 2, excess: 1, coeff: '0.08x', base: '2%', final: '0.16%' },
+          ]}
+          columns={[
+            { title: '副本', dataIndex: 'config', key: 'config', width: 180 },
+            { title: '持有数', dataIndex: 'held', key: 'held', width: 80, align: 'center' },
+            { title: '超额数', dataIndex: 'excess', key: 'excess', width: 80, align: 'center' },
+            { title: '系数', dataIndex: 'coeff', key: 'coeff', width: 100 },
+            { title: '基础概率', dataIndex: 'base', key: 'base', width: 90 },
+            { title: '降权后', dataIndex: 'final', key: 'final', render: v => <Tag color="warning">{v}</Tag> },
+          ]}
+          pagination={false}
+        />
+        <Text type="secondary">注意：虽然总持有2张A，但只有1张A处于"超额"状态需要降权。</Text>
+
+        <Divider style={{ margin: '16px 0' }} />
+
+        <Title level={5}>第二周抽卡计算（以获得A卡为例）</Title>
+        <Table
+          size="small"
+          dataSource={[
+            { key: '1', desc: '背包跨周资源', detail: '已有2张A（来自第一周完成）' },
+            { key: '2', desc: '第二周需求', detail: 'AAA = 第1张A(不降) + 第2张A(降) + 第3张A(降) = 2个降权槽位' },
+            { key: '3', desc: '实际计算', detail: '已持2张 → 2个超额副本全部占用 → 所有新A卡都应用0.05x系数' },
+            { key: '4', desc: '结果', detail: '此时抽到A的概率极低（0.1%），必须靠天数累积' },
+          ]}
+          columns={[
+            { title: '步骤', dataIndex: 'desc', key: 'desc', width: 150 },
+            { title: '详情', dataIndex: 'detail', key: 'detail' },
+          ]}
+          pagination={false}
+        />
 
         <Alert
-          message="结果分析"
-          description="虽然只有1张A和1张C，但跨周关联让两者都被压制。玩家此时很难抽到想要的卡，必须等到下一天再试。这正是4%完成率的核心机制！"
+          message="关键结论"
+          description="第一周的A超额也会压制第二周的A获得，跨周屯卡策略被有效遏制。"
           type="success"
           showIcon
           style={{ marginTop: 16 }}
@@ -243,24 +231,30 @@ export function ProbabilityConfigPage({ onNavigateToSelection }: ProbabilityConf
       </AntCard>
 
       {/* 配置建议 */}
-      <AntCard title="💡 配置建议表" style={{ marginBottom: 24 }}>
+      <AntCard title="💡 V6配置建议表" style={{ marginBottom: 24 }}>
         <Table
           size="small"
           dataSource={[
-            { slots: '2张(如AB)', days: 7, draws: '6-8次', note: '卡很少，需要频繁抽奖才有机会集齐' },
-            { slots: '3张(如AAB)', days: 7, draws: '4-6次', note: '标准配置，AAB是经典选择' },
-            { slots: '4张(如AABB)', days: 7, draws: '3-5次', note: '卡稍多，可以适当减少抽奖次数' },
-            { slots: '5张(如AABBC)', days: 7, draws: '3-4次', note: '卡很多，很容易集齐，可保持低抽奖' },
-            { slots: '3张(如CCC)', days: 14, draws: '3-4次', note: '14天窗口已足够，不需要太高抽奖频率' },
+            { combo: 'AAB（基础A+扩展B）', slots: '3张', reduction: '1点', draws: '4-6次', difficulty: '★★☆☆☆' },
+            { combo: 'AAB B（基础A+扩展B×2）', slots: '4张', reduction: '2点(2张B的第2张)', draws: '3-5次', difficulty: '★★★☆☆' },
+            { combo: 'AAA（基础A+扩展A×2）', slots: '3张', reduction: '2点(A#2和A#3)', draws: '4-5次', difficulty: '★★★★☆' },
+            { combo: 'AABB（基础A+扩展A+扩展B）', slots: '4张', reduction: '2点(A#2, B#2)', draws: '3-5次', difficulty: '★★★☆☆' },
+            { combo: 'AAAA（基础A+扩展A×3）', slots: '4张', reduction: '3点(A#2/#3/#4)', draws: '3-4次', difficulty: '★★★★★' },
           ]}
           columns={[
-            { title: '卡组大小', dataIndex: 'slots', key: 'slots' },
-            { title: '天数', dataIndex: 'days', key: 'days' },
-            { title: '建议每日抽奖', dataIndex: 'draws', key: 'draws' },
-            { title: '说明', dataIndex: 'note', key: 'note' },
+            { title: '组合', dataIndex: 'combo', key: 'combo', width: 260 },
+            { title: '卡数', dataIndex: 'slots', key: 'slots', width: 70 },
+            { title: '降权点', dataIndex: 'reduction', key: 'reduction', width: 100 },
+            { title: '建议日抽', dataIndex: 'draws', key: 'draws', width: 100 },
+            { title: '难度', dataIndex: 'difficulty', key: 'difficulty' },
           ]}
           pagination={false}
         />
+
+        <Text type="secondary" style={{ marginTop: 8, display: 'block' }}>
+          <strong>经验：</strong>越多超额槽位（reduction slots），集齐难度越大。
+          AAA虽然只有3张卡，但有2个降权点，实际难度接近4张卡的AABB。
+        </Text>
       </AntCard>
 
       {/* 底部返回 */}

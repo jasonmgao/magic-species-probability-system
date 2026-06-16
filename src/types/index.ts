@@ -26,6 +26,11 @@ export interface CardSetup {
   week2: WeeklyCombo;
   /** 每日抽奖次数（默认为4） */
   dailyDraws: number;
+  /** V6新增：每组的强制x2基础卡（降权从第3张起算） */
+  baseCards?: {
+    week1: string;
+    week2: string;
+  };
 }
 
 /**
