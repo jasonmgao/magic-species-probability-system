@@ -1,13 +1,15 @@
 /**
- * 🎯 降权系数求解器（V4 - 按周总进度降权）
+ * 🎯 降权系数求解器（V5 - 跨周关联）
  *
- * 核心重构：不再是每张卡独立降权，而是按周总进度统一降权
- * 对于 AAB（第一周）：
- *   - 持0张（总计）→ 系数1.0
- *   - 持1张（总计，不管是A还是B）→ 系数0.008
- *   - 持2张（总计）→ 系数0.008
+ * 核心改进：
+ * 1. 按周总进度统一降权（V4）
+ * 2. 跨周关联：持有下周卡也会影响本周概率（防止提前储备轻松完成下周）
  *
- * 这样A和B共用一套系数，符合预期！
+ * 对于 AAB/CCC：
+ *   - 第一周：AAB是当周卡，CCC跨周卡
+ *   - 如果玩家已有 C×2（下周卡在包里）→ 本周系数也受影响
+ *   - 第二周：AAB是跨周卡，CCC是当周卡
+ *   - 如果玩家已有 A×2（上周卡在包里，虽然已完成）→ 第二周CCC的权重
  */
 
 import type { CardSetup, WeeklyCombo, CoefficientResult, CardCoefficients, SolverProgress } from '@/types';
@@ -41,19 +43,24 @@ function countCardNeeds(cards: string[]): Map<string, number> {
 }
 
 /**
- * 计算当前周已持有的总数（核心理辑）
- * 对于 AAB + 背包{A:2} → 已持有2张，返回2
- * 对于 AAB + 背包{A:1,B:1} → 已持有2张，返回2
+ * 计算当前周已持有的总数（核心逻辑 - 按当周的combo计算）
  */
 function getWeekHoldCount(combo: WeeklyCombo, backpack: Record<string, number>): number {
   const needs = countCardNeeds(combo.cards);
   let holdCount = 0;
   for (const [card, need] of needs.entries()) {
     const have = backpack[card] || 0;
-    // 持有数不能超过需求数（超出的不算在组合进度里）
     holdCount += Math.min(have, need);
   }
   return holdCount;
+}
+
+/**
+ * V5 新增：计算跨周持有数
+ * 用于衡量"进度储备"对其他周的影响
+ */
+function getCrossWeekHoldCount(otherWeekCombo: WeeklyCombo, backpack: Record<string, number>): number {
+  return getWeekHoldCount(otherWeekCombo, backpack);
 }
 
 /**
@@ -302,12 +309,19 @@ function getLuckyCard(
 }
 
 /**
- * 🎯 V4 抽卡逻辑：按周总进度统一降权
+ * 🎯 V5 抽卡逻辑：跨周关联降权
  *
- * 关键改变：
- * 1. 计算当前周已持有的总数（AAB: A=2,B=0 → total=2）
- * 2. 用这个总数查系数数组
- * 3. 当周所有卡使用同一个系数
+ * 核心改进：
+ * 1. 当周卡：根据当周持有数 × 当周系数
+ * 2. 跨周卡：根据跨周持有数 × 跨周系数（另一周的系数）
+ * 3. 其他卡：基础概率
+ *
+ * 这样：
+ * - 第一周存储大量C → 第二周C初始降权，但第一周A/B也降权
+ * - 第二周开始时，如果玩家前7天拿到很多C，第二周C的降权会更大
+ * - 第一周时A/B被降权，C也被降权（如果已有储备）
+ *
+ * 最终效果：两周互相压制，避免第二周70%的极端情况
  */
 function drawOneCard(
   backpack: Record<string, number>,
@@ -319,14 +333,19 @@ function drawOneCard(
 ): string {
   const isWeek1 = day <= 7;
   const currentCombo = isWeek1 ? setup.week1 : setup.week2;
+  const crossCombo = isWeek1 ? setup.week2 : setup.week1; // 另一周
   const weekCoeffs = isWeek1 ? coefficients.week1 : coefficients.week2;
+  const crossCoeffs = isWeek1 ? coefficients.week2 : coefficients.week1; // 另一周系数
 
-  // 计算当前周已持有的总数
+  // 计算各项持有数
   const weekHoldCount = getWeekHoldCount(currentCombo, backpack);
+  const crossHoldCount = getCrossWeekHoldCount(crossCombo, backpack);
 
-  // 获取当前周的统一系数
-  const coeffIndex = Math.min(weekHoldCount, weekCoeffs.length - 1);
-  const weekCoeff = weekCoeffs[coeffIndex];
+  // 获取系数索引（限制在数组范围内）
+  const weekCoeffIndex = Math.min(weekHoldCount, weekCoeffs.length - 1);
+  const crossCoeffIndex = Math.min(crossHoldCount, crossCoeffs.length - 1);
+  const weekCoeff = weekCoeffs[weekCoeffIndex];
+  const crossCoeff = crossCoeffs[crossCoeffIndex];
 
   // 基础概率
   const rawProbs: Record<string, number> = {};
@@ -334,17 +353,21 @@ function drawOneCard(
     rawProbs[card] = getBaseProb(card);
   }
 
-  // 应用降权：当周所有卡使用同一个系数
+  // V5 应用跨周关联降权
   const weightedProbs: Record<string, number> = {};
   for (const card of ALL_CARDS) {
     const isInCurrentWeek = currentCombo.cards.includes(card);
+    const isInCrossWeek = crossCombo.cards.includes(card);
 
-    if (!isInCurrentWeek) {
-      // 非当周卡：正常概率，不降权
-      weightedProbs[card] = rawProbs[card];
-    } else {
-      // 当周卡：统一使用 weekCoeff
+    if (isInCurrentWeek) {
+      // 当周卡：使用当周系数
       weightedProbs[card] = rawProbs[card] * weekCoeff;
+    } else if (isInCrossWeek) {
+      // 跨周卡：使用跨周系数（V5关键！）
+      weightedProbs[card] = rawProbs[card] * crossCoeff;
+    } else {
+      // 其他卡：基础概率
+      weightedProbs[card] = rawProbs[card];
     }
   }
 
@@ -379,30 +402,60 @@ export interface SolverResult {
 }
 
 /**
- * 主入口 V4：网格搜索找正确系数
+ * 主入口 V5：网格搜索找正确系数（跨周关联版）
  *
- * V4改变：
- * 1. 按周总进度降权（不是按卡）
- * 2. 网格搜索0.001~0.03，找最接近4%的
+ * V5改进：
+ * 1. 网格更细，范围更广（0.1~1.0 + 0.01~0.1）
+ * 2. 两层搜索：粗网格 + 细网格在最佳附近
+ * 3. 跨周关联让系数影响更平滑
  */
 export async function solveCoefficientsAsync(
   setup: CardSetup,
   _targetRate: number = 4.0,
   onProgress?: (progress: SolverProgress) => void
 ): Promise<SolverResult> {
-  // V4: 生成系数数组（按周，不是按卡）
-  const w1CoeffArray = createProgressCoefficients(setup.week1, 0.01);  // 占位，后面会改
-  const w2CoeffArray = createProgressCoefficients(setup.week2, 0.01);
+  // V5: 跨周关联后，系数概率调为更宽范围（线性影响而非指数）
+  const w2CoeffArray = createProgressCoefficients(setup.week2, 0.5); // 占位
 
-  // ========== 搜索第一周系数 ==========
-  // 网格搜索: 0.001, 0.003, 0.005, ..., 0.021
-  const testCoeffs = [0.001, 0.003, 0.005, 0.007, 0.009, 0.011, 0.013, 0.015, 0.017, 0.019, 0.021];
-  let w1BestCoeff = 0.01;
+  // ========== 搜索第一周系数（粗）==========
+  // 更宽的网格：0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 1.0（跨周关联后需要更高系数）
+  const coarseGrid = [0.02, 0.05, 0.08, 0.1, 0.15, 0.2, 0.3, 0.5, 0.7, 1.0];
+  let w1BestCoeff = 0.1;
   let w1BestRate = 0;
   let w1BestError = 100;
 
-  for (let i = 0; i < testCoeffs.length; i++) {
-    const coeff = testCoeffs[i];
+  for (let i = 0; i < coarseGrid.length; i++) {
+    const coeff = coarseGrid[i];
+    const testW1Coeffs = createProgressCoefficients(setup.week1, coeff);
+    const res = await simulateBothWeeks(setup, testW1Coeffs, w2CoeffArray, 2000);
+
+    const error = Math.abs(res.week1Rate - 4);
+    if (error < w1BestError) {
+      w1BestError = error;
+      w1BestCoeff = coeff;
+      w1BestRate = res.week1Rate;
+    }
+
+    if (onProgress) {
+      onProgress({
+        iteration: 1 + i / coarseGrid.length,
+        totalIterations: 4,
+        week1Rate: res.week1Rate,
+        week2Rate: 0,
+        error: error,
+        isConverged: false,
+      });
+    }
+  }
+
+  // ========== 搜索第一周系数（细）==========
+  // 在最佳值附近精细搜索 ±0.03，步长0.005
+  const w1Low = Math.max(0.01, w1BestCoeff - 0.03);
+  const w1High = Math.min(1.0, w1BestCoeff + 0.03);
+  const w1FineSteps = 12;
+
+  for (let i = 0; i <= w1FineSteps; i++) {
+    const coeff = w1Low + (w1High - w1Low) * i / w1FineSteps;
     const testW1Coeffs = createProgressCoefficients(setup.week1, coeff);
     const res = await simulateBothWeeks(setup, testW1Coeffs, w2CoeffArray, 3000);
 
@@ -415,8 +468,8 @@ export async function solveCoefficientsAsync(
 
     if (onProgress) {
       onProgress({
-        iteration: 1 + i / testCoeffs.length,
-        totalIterations: 3,
+        iteration: 2 + i / w1FineSteps,
+        totalIterations: 4,
         week1Rate: res.week1Rate,
         week2Rate: 0,
         error: error,
@@ -425,14 +478,43 @@ export async function solveCoefficientsAsync(
     }
   }
 
-  // ========== 搜索第二周系数 ==========
+  // ========== 搜索第二周系数（粗）==========
   const w1FinalCoeffs = createProgressCoefficients(setup.week1, w1BestCoeff);
-  let w2BestCoeff = 0.01;
+  let w2BestCoeff = 0.1;
   let w2BestRate = 0;
   let w2BestError = 100;
 
-  for (let i = 0; i < testCoeffs.length; i++) {
-    const coeff = testCoeffs[i];
+  for (let i = 0; i < coarseGrid.length; i++) {
+    const coeff = coarseGrid[i];
+    const testW2Coeffs = createProgressCoefficients(setup.week2, coeff);
+    const res = await simulateBothWeeks(setup, w1FinalCoeffs, testW2Coeffs, 2000);
+
+    const error = Math.abs(res.week2Rate - 4);
+    if (error < w2BestError) {
+      w2BestError = error;
+      w2BestCoeff = coeff;
+      w2BestRate = res.week2Rate;
+    }
+
+    if (onProgress) {
+      onProgress({
+        iteration: 2.5 + i / coarseGrid.length,
+        totalIterations: 4,
+        week1Rate: w1BestRate,
+        week2Rate: res.week2Rate,
+        error: (w1BestError + error),
+        isConverged: false,
+      });
+    }
+  }
+
+  // ========== 搜索第二周系数（细）==========
+  const w2Low = Math.max(0.01, w2BestCoeff - 0.03);
+  const w2High = Math.min(1.0, w2BestCoeff + 0.03);
+  const w2FineSteps = 12;
+
+  for (let i = 0; i <= w2FineSteps; i++) {
+    const coeff = w2Low + (w2High - w2Low) * i / w2FineSteps;
     const testW2Coeffs = createProgressCoefficients(setup.week2, coeff);
     const res = await simulateBothWeeks(setup, w1FinalCoeffs, testW2Coeffs, 3000);
 
@@ -445,8 +527,8 @@ export async function solveCoefficientsAsync(
 
     if (onProgress) {
       onProgress({
-        iteration: 2 + i / testCoeffs.length,
-        totalIterations: 3,
+        iteration: 3 + i / w2FineSteps,
+        totalIterations: 4,
         week1Rate: w1BestRate,
         week2Rate: res.week2Rate,
         error: (w1BestError + error),
@@ -459,8 +541,8 @@ export async function solveCoefficientsAsync(
 
   if (onProgress) {
     onProgress({
-      iteration: 3,
-      totalIterations: 3,
+      iteration: 4,
+      totalIterations: 4,
       week1Rate: w1BestRate,
       week2Rate: w2BestRate,
       error: w2BestError,
@@ -479,7 +561,7 @@ export async function solveCoefficientsAsync(
     week2Rate: final.week2Rate,
     fullCollectionRate: final.fullCollectionRate,
     converged: (w1BestError < 0.5 && w2BestError < 0.5),
-    iterations: 22,  // 11 + 11
+    iterations: 48,  // 10 + 13 + 10 + 13 + 2 (最终验证)
     finalError: Math.abs(final.week1Rate - 4) + Math.abs(final.week2Rate - 4),
   };
 }
