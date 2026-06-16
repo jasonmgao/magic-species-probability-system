@@ -390,9 +390,6 @@ export async function solveCoefficientsAsync(
   const w1Coeffs = createUniformCoefficients(w1Needs, w1BestCoeff);
 
   // ========== 搜索第二周系数 ==========
-  let w2BestCoeff = 0.001;
-  let w2BestRate = 0;
-
   // 自定义第二周搜索（需要固定第一周系数）
   const w2Needs = countCardNeeds(setup.week2.cards);
   // 🎯 直接用你计算的0.0148，不搜索了
