@@ -484,17 +484,22 @@ export function generateCoefficientReport(
     const w1Need = w1Needs.get(card) || 0;
     const w2Need = w2Needs.get(card) || 0;
 
-    if (w1Need > 1) {
+    // V6.5 修正：对于week1Coeffs，需要同时考虑本周需求和跨周需求
+    // 因为跨周卡的第2张也需要降权，且使用相同的globalCoeff
+    const week1NeedWithCross = Math.max(w1Need, w2Need);
+    if (week1NeedWithCross > 1) {
       const arr: CardCoefficients = [1.0];
-      for (let i = 1; i < w1Need; i++) arr.push(globalCoeff[1] ?? 1.0);
+      for (let i = 1; i < week1NeedWithCross; i++) arr.push(globalCoeff[1] ?? 1.0);
       week1Coeffs[card] = arr;
     } else {
       week1Coeffs[card] = [1.0];
     }
 
-    if (w2Need > 1) {
+    // 同理，week2Coeffs也要同时考虑两周的需求
+    const week2NeedWithCross = Math.max(w2Need, w1Need);
+    if (week2NeedWithCross > 1) {
       const arr: CardCoefficients = [1.0];
-      for (let i = 1; i < w2Need; i++) arr.push(globalCoeff[1] ?? 1.0);
+      for (let i = 1; i < week2NeedWithCross; i++) arr.push(globalCoeff[1] ?? 1.0);
       week2Coeffs[card] = arr;
     } else {
       week2Coeffs[card] = [1.0];
