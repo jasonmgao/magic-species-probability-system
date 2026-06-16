@@ -1,212 +1,517 @@
 /**
- * 🎴 CardSelectionPage - New Minimalist Design
- * Color Palette: #E6FAFC, #9CFC97, #6BA368, #511B3A, #353D2F
+ * 🎴 CardSelectionPage - Financial Instrument Aesthetic
+ * Designed with precision and restraint
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
-  Row, Col, Card as AntCard, Button, Space, Typography,
-  message, Progress, Table, Tag, Select, Divider, Alert, Tabs, InputNumber,
+  Row, Col, Button, Space, Typography,
+  message, Progress, Table, Tag, Select, Divider,
+  InputNumber,
 } from 'antd';
 import {
   CalculatorOutlined, PlusOutlined, DeleteOutlined,
-  TrophyOutlined, QuestionCircleOutlined, TableOutlined, GiftOutlined,
-  ThunderboltOutlined,
+  TrophyOutlined, ArrowRightOutlined, BarChartOutlined,
 } from '@ant-design/icons';
 import type { CardSetup, WeeklyCombo, CoefficientResult, SolverProgress, CardCoefficients } from '@/types';
 import {
   runSimulation,
   ALL_CARDS,
-  generateCases,
-  generateProbabilityTables,
   getCardType,
   getBaseProb,
 } from '@/services/simulationEngine';
 
-const { Title, Text, Paragraph } = Typography;
+const { Title, Text } = Typography;
 const { Option } = Select;
-const { TabPane } = Tabs;
 
-// Color Palette
-const COLORS = {
-  bgLight: '#E6FAFC',
-  accent: '#9CFC97',
-  primary: '#6BA368',
-  dark: '#511B3A',
-  text: '#353D2F',
+// Refined color system - more restraint, less AI feel
+const PALETTE = {
+  bg: '#F7F9F7',
+  surface: '#FFFFFF',
+  text: '#1a1a2e',
+  textMuted: '#6b6b7b',
+  border: '#e5e7eb',
+  borderLight: '#f0f0f2',
+  accent: '#511B3A',      // Deep plum - used sparingly
+  accentLight: '#f4f0f3', // Very light plum for backgrounds
+  success: '#3d6b4a',     // Refined forest green
+  highlight: '#7fb069',   // Bright green accent
 };
 
-// Card rarity colors mapped to palette
-const RARITY_COLORS = {
-  magic: { bg: '#511B3A', text: '#E6FAFC', label: '神奇' },
-  rare: { bg: '#6BA368', text: '#E6FAFC', label: '稀有' },
-  common: { bg: '#353D2F', text: '#9CFC97', label: '普通' },
+const CARD_META: Record<string, { type: 'magic' | 'rare' | 'common'; prob: number }> = {
+  A: { type: 'magic', prob: 2 },
+  B: { type: 'rare', prob: 7 },
+  C: { type: 'rare', prob: 7 },
+  D: { type: 'rare', prob: 7 },
+  E: { type: 'rare', prob: 7 },
+  F: { type: 'common', prob: 14 },
+  G: { type: 'common', prob: 14 },
+  H: { type: 'common', prob: 14 },
+  I: { type: 'common', prob: 14 },
+  J: { type: 'common', prob: 14 },
 };
 
-const CARD_META: Record<string, { type: 'magic' | 'rare' | 'common'; name: string; baseProb: number }> = {
-  A: { type: 'magic', name: '神奇A', baseProb: 2 },
-  B: { type: 'rare', name: '稀有B', baseProb: 7 },
-  C: { type: 'rare', name: '稀有C', baseProb: 7 },
-  D: { type: 'rare', name: '稀有D', baseProb: 7 },
-  E: { type: 'rare', name: '稀有E', baseProb: 7 },
-  F: { type: 'common', name: '普通F', baseProb: 14 },
-  G: { type: 'common', name: '普通G', baseProb: 14 },
-  H: { type: 'common', name: '普通H', baseProb: 14 },
-  I: { type: 'common', name: '普通I', baseProb: 14 },
-  J: { type: 'common', name: '普通J', baseProb: 14 },
+const TYPE_LABELS = {
+  magic: { text: '神奇', short: '神' },
+  rare: { text: '稀有', short: '稀' },
+  common: { text: '普通', short: '普' },
 };
 
 const DEFAULT_SETUP: CardSetup = {
-  week1: {
-    name: '第一周',
-    cards: ['A', 'A', 'B'],
-    deadline: 7,
-  },
-  week2: {
-    name: '第二周',
-    cards: ['C', 'D', 'E'],
-    deadline: 14,
-  },
+  week1: { name: '第一周', cards: ['A', 'A', 'B'], deadline: 7 },
+  week2: { name: '第二周', cards: ['C', 'D', 'E'], deadline: 14 },
   dailyDraws: 4,
-  baseCards: {
-    week1: 'A',
-    week2: 'C',
-  },
 };
 
-const MIN_EXTRA_CARDS = 1;
-const MAX_EXTRA_CARDS = 3;
-const MIN_DAILY_DRAWS = 1;
-const MAX_DAILY_DRAWS = 10;
+// Configuration Balance Indicator - Signature Element
+function ConfigBalanceBar({ setup }: { setup: CardSetup }) {
+  const analysis = useMemo(() => {
+    const w1Cards = setup.week1.cards.length;
+    const w2Cards = setup.week2.cards.length;
+    const totalUnique = new Set([...setup.week1.cards, ...setup.week2.cards]).size;
+    const w1Repeats = setup.week1.cards.length - new Set(setup.week1.cards).size;
+    const w2Repeats = setup.week2.cards.length - new Set(setup.week2.cards).size;
 
+    // Difficulty score: 0-100
+    const baseScore = 30;
+    const cardFactor = (w1Cards + w2Cards) * 8;
+    const uniqueFactor = totalUnique * 5;
+    const repeatPenalty = (w1Repeats + w2Repeats) * 15;
+
+    let score = baseScore + cardFactor - uniqueFactor - repeatPenalty;
+    score = Math.max(10, Math.min(95, score));
+
+    let label = '适中';
+    let color = PALETTE.success;
+    if (score < 25) { label = '极易'; color = PALETTE.highlight; }
+    else if (score < 40) { label = '容易'; color = '#8fb069'; }
+    else if (score > 70) { label = '困难'; color = PALETTE.accent; }
+    else if (score > 55) { label = '偏难'; color = '#8b5a6b'; }
+
+    return { score, label, color, details: `${w1Cards}+${w2Cards}张 · ${totalUnique}种` };
+  }, [setup]);
+
+  return (
+    <div style={{
+      background: PALETTE.surface,
+      borderRadius: 4,
+      padding: '20px 24px',
+      border: `1px solid ${PALETTE.border}`,
+      marginBottom: 24,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div>
+          <Text style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', color: PALETTE.textMuted }}>
+            Configuration Difficulty
+          </Text>
+          <div style={{ fontSize: 13, color: PALETTE.textMuted, marginTop: 2 }}>
+            {analysis.details}
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <span style={{
+            fontFamily: "'IBM Plex Mono', monospace",
+            fontSize: 28,
+            fontWeight: 600,
+            color: analysis.color,
+          }}>
+            {analysis.score}
+          </span>
+          <span style={{ fontSize: 12, color: PALETTE.textMuted, marginLeft: 4 }}>/100</span>
+        </div>
+      </div>
+
+      {/* Balance Bar */}
+      <div style={{ position: 'relative', height: 4, background: PALETTE.borderLight, borderRadius: 2 }}>
+        <div style={{
+          position: 'absolute',
+          left: 0,
+          width: `${analysis.score}%`,
+          height: '100%',
+          background: analysis.color,
+          borderRadius: 2,
+          transition: 'all 0.4s ease',
+        }} />
+        {/* Markers */}
+        {[25, 50, 75].map(pos => (
+          <div key={pos} style={{
+            position: 'absolute',
+            left: `${pos}%`,
+            top: -3,
+            width: 1,
+            height: 10,
+            background: PALETTE.border,
+          }} />
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
+        <span style={{ fontSize: 11, color: PALETTE.textMuted }}>极易完成</span>
+        <span style={{
+          fontSize: 11,
+          fontWeight: 600,
+          color: analysis.color,
+          letterSpacing: '0.02em',
+        }}>
+          {analysis.label}
+        </span>
+        <span style={{ fontSize: 11, color: PALETTE.textMuted }}>极难完成</span>
+      </div>
+    </div>
+  );
+}
+
+// Minimal Card Component
+function CardToken({
+  card,
+  count,
+  isActive,
+  isBase,
+}: {
+  card: string;
+  count?: number;
+  isActive?: boolean;
+  isBase?: boolean;
+}) {
+  const meta = CARD_META[card];
+  const typeColors = {
+    magic: PALETTE.accent,
+    rare: PALETTE.success,
+    common: PALETTE.textMuted,
+  };
+
+  return (
+    <div style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 6,
+      padding: isBase ? '6px 12px' : '4px 10px',
+      background: isActive ? PALETTE.accentLight : PALETTE.surface,
+      border: `1px solid ${isBase ? typeColors[meta.type] : isActive ? PALETTE.accent : PALETTE.border}`,
+      borderRadius: 3,
+      fontFamily: "'IBM Plex Mono', monospace",
+      fontSize: 13,
+      fontWeight: 500,
+      color: isBase ? typeColors[meta.type] : PALETTE.text,
+    }}>
+      <span>{card}</span>
+      {count && count > 1 && (
+        <span style={{ fontSize: 11, color: PALETTE.textMuted }}>×{count}</span>
+      )}
+      {isBase && (
+        <span style={{
+          fontSize: 9,
+          textTransform: 'uppercase',
+          letterSpacing: '0.03em',
+          color: typeColors[meta.type],
+          opacity: 0.7,
+        }}>
+          base
+        </span>
+      )}
+    </div>
+  );
+}
+
+// Week Panel Component
+function WeekPanel({
+  title,
+  weekKey,
+  combo,
+  setup,
+  onChange,
+}: {
+  title: string;
+  weekKey: 'week1' | 'week2';
+  combo: WeeklyCombo;
+  setup: CardSetup;
+  onChange: (newSetup: CardSetup) => void;
+}) {
+  const needs = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const c of combo.cards) {
+      map.set(c, (map.get(c) || 0) + 1);
+    }
+    return map;
+  }, [combo.cards]);
+
+  const baseCard = combo.cards[0];
+  const extraCards = combo.cards.slice(2); // After 2 base cards
+
+  const setBase = (card: string) => {
+    const current = [...combo.cards];
+    const newCards = [card, card, ...current.filter(c => c !== baseCard)];
+    onChange({
+      ...setup,
+      [weekKey]: { ...combo, cards: newCards.slice(0, 5) },
+    });
+  };
+
+  const addCard = () => {
+    if (combo.cards.length >= 5) {
+      message.warning('上限5张');
+      return;
+    }
+    const options = ALL_CARDS.filter(c => !combo.cards.includes(c) || c === baseCard);
+    const newCard = options[0] || 'A';
+    onChange({
+      ...setup,
+      [weekKey]: { ...combo, cards: [...combo.cards, newCard] },
+    });
+  };
+
+  const removeCard = (idx: number) => {
+    const actualIdx = idx + 2;
+    onChange({
+      ...setup,
+      [weekKey]: { ...combo, cards: combo.cards.filter((_, i) => i !== actualIdx) },
+    });
+  };
+
+  const changeCard = (idx: number, newCard: string) => {
+    const actualIdx = idx + 2;
+    const newCards = [...combo.cards];
+    newCards[actualIdx] = newCard;
+    onChange({
+      ...setup,
+      [weekKey]: { ...combo, cards: newCards },
+    });
+  };
+
+  return (
+    <div style={{
+      background: PALETTE.surface,
+      borderRadius: 4,
+      border: `1px solid ${PALETTE.border}`,
+      overflow: 'hidden',
+    }}>
+      {/* Header */}
+      <div style={{
+        padding: '16px 20px',
+        borderBottom: `1px solid ${PALETTE.border}`,
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}>
+        <div>
+          <Text style={{
+            fontSize: 11,
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            color: PALETTE.textMuted,
+            display: 'block',
+          }}>
+            Deck Configuration
+          </Text>
+          <Title level={5} style={{ margin: '4px 0 0 0', fontSize: 16, fontWeight: 600, color: PALETTE.text }}>
+            {title}
+          </Title>
+        </div>
+        <div style={{
+          padding: '4px 12px',
+          background: PALETTE.bg,
+          borderRadius: 3,
+          fontFamily: "'IBM Plex Mono', monospace",
+          fontSize: 12,
+          color: PALETTE.textMuted,
+        }}>
+          {combo.deadline} days
+        </div>
+      </div>
+
+      <div style={{ padding: 20 }}>
+        {/* Base Card Selector */}
+        <div style={{ marginBottom: 20 }}>
+          <Text style={{ fontSize: 11, color: PALETTE.textMuted, display: 'block', marginBottom: 8 }}>
+            BASE CARD (×2 FIXED)
+          </Text>
+          <Select
+            value={baseCard}
+            onChange={setBase}
+            style={{ width: '100%' }}
+            size="large"
+            bordered={false}
+            dropdownStyle={{ borderRadius: 4 }}
+          >
+            {ALL_CARDS.map(c => (
+              <Option key={c} value={c}>
+                <Space>
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 24,
+                    height: 24,
+                    borderRadius: 3,
+                    background: CARD_META[c].type === 'magic' ? PALETTE.accent :
+                               CARD_META[c].type === 'rare' ? PALETTE.success : PALETTE.textMuted,
+                    color: '#fff',
+                    fontFamily: "'IBM Plex Mono', monospace",
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}>{c}</span>
+                  <span>{TYPE_LABELS[CARD_META[c].type].text}</span>
+                  <span style={{ color: PALETTE.textMuted }}>{CARD_META[c].prob}%</span>
+                </Space>
+              </Option>
+            ))}
+          </Select>
+          <div style={{ marginTop: 8 }}>
+            <CardToken card={baseCard} count={2} isBase />
+          </div>
+        </div>
+
+        {/* Extra Cards */}
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <Text style={{ fontSize: 11, color: PALETTE.textMuted }}>
+              EXTENSION CARDS ({extraCards.length}/3)
+            </Text>
+            <Button
+              type="text"
+              size="small"
+              icon={<PlusOutlined />}
+              onClick={addCard}
+              disabled={combo.cards.length >= 5}
+              style={{ color: PALETTE.success }}
+            >
+              Add
+            </Button>
+          </div>
+
+          {extraCards.length === 0 ? (
+            <div style={{
+              padding: '20px 0',
+              textAlign: 'center',
+              color: PALETTE.textMuted,
+              fontSize: 13,
+              border: `1px dashed ${PALETTE.border}`,
+              borderRadius: 4,
+            }}>
+              No extension cards
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {extraCards.map((card, idx) => (
+                <div key={idx} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '8px 12px',
+                  background: PALETTE.bg,
+                  borderRadius: 3,
+                }}>
+                  <Select
+                    value={card}
+                    onChange={(v) => changeCard(idx, v)}
+                    style={{ flex: 1 }}
+                    size="small"
+                    bordered={false}
+                  >
+                    {ALL_CARDS.map(c => (
+                      <Option key={c} value={c}>
+                        <Space>
+                          <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600 }}>{c}</span>
+                          <span style={{ fontSize: 12, color: PALETTE.textMuted }}>
+                            {TYPE_LABELS[CARD_META[c].type].text} {CARD_META[c].prob}%
+                          </span>
+                        </Space>
+                      </Option>
+                    ))}
+                  </Select>
+                  <Button
+                    type="text"
+                    danger
+                    size="small"
+                    icon={<DeleteOutlined />}
+                    onClick={() => removeCard(idx)}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Summary */}
+        <Divider style={{ margin: '20px 0', borderColor: PALETTE.borderLight }} />
+        <div style={{
+          display: 'flex',
+          gap: 12,
+          flexWrap: 'wrap',
+        }}>
+          {Array.from(needs.entries()).map(([card, count]) => (
+            <CardToken key={card} card={card} count={count} isActive={count > 1} />
+          ))}
+        </div>
+        {Array.from(needs.values()).some(n => n > 1) && (
+          <div style={{
+            marginTop: 12,
+            padding: '8px 12px',
+            background: PALETTE.accentLight,
+            borderRadius: 3,
+            fontSize: 11,
+            color: PALETTE.accent,
+          }}>
+            重复卡牌将在第2张起应用降权系数
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Coefficient Display Component
+function CoefficientDisplay({ value }: { value: number }) {
+  const severity = value < 0.001 ? 'extreme' : value < 0.01 ? 'high' : value < 0.1 ? 'medium' : 'low';
+  const colors = {
+    extreme: { bg: PALETTE.accent, text: '#fff' },
+    high: { bg: '#d4a5a5', text: PALETTE.accent },
+    medium: { bg: '#e8f0e8', text: PALETTE.success },
+    low: { bg: PALETTE.borderLight, text: PALETTE.textMuted },
+  };
+  const c = colors[severity];
+
+  return (
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      padding: '2px 8px',
+      background: c.bg,
+      color: c.text,
+      borderRadius: 3,
+      fontFamily: "'IBM Plex Mono', monospace",
+      fontSize: 12,
+      fontWeight: severity === 'extreme' ? 600 : 400,
+    }}>
+      {value.toFixed(5)}
+    </span>
+  );
+}
+
+// Main Component
 export function CardSelectionPage({ onNavigateToConfig }: { onNavigateToConfig?: () => void }) {
   const [setup, setSetup] = useState<CardSetup>(DEFAULT_SETUP);
   const [isCalculating, setIsCalculating] = useState(false);
   const [progress, setProgress] = useState<SolverProgress | null>(null);
   const [result, setResult] = useState<CoefficientResult | null>(null);
-  const [activeTab, setActiveTab] = useState('week1');
-
-  // Helper functions...
-  const buildNeedsMap = (cards: string[]): Map<string, number> => {
-    const needs = new Map<string, number>();
-    for (const card of cards) {
-      needs.set(card, (needs.get(card) || 0) + 1);
-    }
-    return needs;
-  };
-
-  const parseCards = (cards: string[], baseCard: string) => {
-    const counts = new Map<string, number>();
-    cards.forEach(c => counts.set(c, (counts.get(c) || 0) + 1));
-    const baseCount = counts.get(baseCard) || 0;
-    counts.delete(baseCard);
-    const extras: { card: string; count: number }[] = [];
-    for (const [card, count] of counts.entries()) {
-      extras.push({ card, count });
-    }
-    return { baseCount, extras };
-  };
-
-  // Setup update functions...
-  const setBaseCard = useCallback((week: 'week1' | 'week2', newBase: string) => {
-    setSetup(prev => {
-      const current = [...prev[week].cards];
-      const existingBase = prev.baseCards ?? { week1: prev.week1.cards[0], week2: prev.week2.cards[0] };
-      const newBaseCards: { week1: string; week2: string } = { ...existingBase, [week]: newBase };
-
-      const prevBase = prev.baseCards?.[week] || prev[week].cards[0];
-      const unusedCards: string[] = [];
-      for (const c of current) {
-        if (c !== prevBase) unusedCards.push(c);
-        else if (c === newBase) unusedCards.push(c);
-      }
-
-      const countMap = new Map<string, number>();
-      unusedCards.forEach(c => countMap.set(c, (countMap.get(c) || 0) + 1));
-
-      const newCards: string[] = [newBase, newBase];
-      for (const [card, count] of countMap) {
-        if (card !== newBase) {
-          for (let i = 0; i < count; i++) newCards.push(card);
-        }
-      }
-
-      return { ...prev, [week]: { ...prev[week], cards: newCards }, baseCards: newBaseCards };
-    });
-    if (result) setResult(null);
-  }, [result]);
-
-  const addExtraCard = useCallback((week: 'week1' | 'week2') => {
-    setSetup(prev => {
-      const current = prev[week].cards;
-      if (current.length >= MAX_EXTRA_CARDS + 2) {
-        message.warning(`每周最多 ${MAX_EXTRA_CARDS + 2} 张卡`);
-        return prev;
-      }
-      const defaultExtra = (prev.baseCards?.[week] || current[0]) === 'A' ? 'B' : 'A';
-      return { ...prev, [week]: { ...prev[week], cards: [...current, defaultExtra] } };
-    });
-    if (result) setResult(null);
-  }, [result]);
-
-  const removeExtraCard = useCallback((week: 'week1' | 'week2', cardIndex: number) => {
-    setSetup(prev => {
-      const current = [...prev[week].cards];
-      if (current.length <= 3) {
-        message.warning('需要至少1张扩展卡');
-        return prev;
-      }
-      let extIdx = 0;
-      let foundIndex = -1;
-      const baseCard = prev.baseCards?.[week] || current[0];
-      for (let i = 0; i < current.length; i++) {
-        if (current[i] === baseCard) continue;
-        if (extIdx === cardIndex) { foundIndex = i; break; }
-        extIdx++;
-      }
-      if (foundIndex === -1) return prev;
-      return { ...prev, [week]: { ...prev[week], cards: current.filter((_, i) => i !== foundIndex) } };
-    });
-    if (result) setResult(null);
-  }, [result]);
-
-  const updateExtraCard = useCallback((week: 'week1' | 'week2', cardIndex: number, newCard: string) => {
-    setSetup(prev => {
-      const current = [...prev[week].cards];
-      const baseCard = prev.baseCards?.[week] || current[0];
-      let extIdx = 0;
-      for (let i = 0; i < current.length; i++) {
-        if (current[i] === baseCard) continue;
-        if (extIdx === cardIndex) { current[i] = newCard; break; }
-        extIdx++;
-      }
-      return { ...prev, [week]: { ...prev[week], cards: current } };
-    });
-    if (result) setResult(null);
-  }, [result]);
-
-  const updateDailyDraws = useCallback((draws: number) => {
-    setSetup(prev => ({ ...prev, dailyDraws: draws }));
-    if (result) setResult(null);
-  }, [result]);
+  const [showResults, setShowResults] = useState(false);
 
   const runSolve = useCallback(async () => {
     if (setup.week1.cards.length < 3 || setup.week2.cards.length < 3) {
-      message.error('每周需要至少3张卡');
+      message.error('每周至少3张卡');
       return;
     }
     setIsCalculating(true);
     setProgress(null);
     setResult(null);
     try {
-      const coefficientResult = await runSimulation(setup, (p: SolverProgress) => setProgress(p));
+      const coefficientResult = await runSimulation(setup, setProgress);
       setResult(coefficientResult);
+      setShowResults(true);
       const error1 = Math.abs(coefficientResult.actualRates.week1 - 4.0);
       const error2 = Math.abs(coefficientResult.actualRates.week2 - 4.0);
       if (coefficientResult.converged && error1 < 1.0 && error2 < 1.0) {
-        message.success('求解成功！两周集齐率均接近4%');
-      } else {
-        message.warning(`结果已生成（误差：${Math.max(error1, error2).toFixed(2)}%）`);
+        message.success('系数已收敛');
       }
     } catch (error) {
       message.error('求解失败: ' + String(error));
@@ -215,448 +520,441 @@ export function CardSelectionPage({ onNavigateToConfig }: { onNavigateToConfig?:
     }
   }, [setup]);
 
-  const getCardBadge = (card: string, isBase = false) => {
-    const meta = CARD_META[card];
-    const style = RARITY_COLORS[meta.type];
-    return (
-      <span
-        key={card}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          width: 36,
-          height: 36,
-          borderRadius: 8,
-          background: style.bg,
-          color: style.text,
-          fontWeight: isBase ? 700 : 500,
-          fontSize: 16,
-          margin: 2,
-          boxShadow: isBase ? `0 0 0 2px ${COLORS.accent}` : 'none',
-        }}
-      >
-        {card}
-      </span>
-    );
-  };
+  // Coefficient Table
+  const renderCoefficients = (weekData: WeeklyCombo, otherWeekData: WeeklyCombo, coeffs: Record<string, CardCoefficients>) => {
+    const needs = new Map<string, number>();
+    for (const c of weekData.cards) needs.set(c, (needs.get(c) || 0) + 1);
+    const otherNeeds = new Map<string, number>();
+    for (const c of otherWeekData.cards) otherNeeds.set(c, (otherNeeds.get(c) || 0) + 1);
 
-  // Card Type Legend
-  const CardTypeLegend = () => (
-    <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ width: 28, height: 28, borderRadius: 6, background: RARITY_COLORS.magic.bg, color: RARITY_COLORS.magic.text, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>A</span>
-        <Text style={{ color: COLORS.text, fontSize: 13 }}>神奇 {CARD_META.A.baseProb}%</Text>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ width: 28, height: 28, borderRadius: 6, background: RARITY_COLORS.rare.bg, color: RARITY_COLORS.rare.text, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>B</span>
-        <Text style={{ color: COLORS.text, fontSize: 13 }}>稀有 4张均分{CARD_META.B.baseProb}%</Text>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ width: 28, height: 28, borderRadius: 6, background: RARITY_COLORS.common.bg, color: RARITY_COLORS.common.text, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>F</span>
-        <Text style={{ color: COLORS.text, fontSize: 13 }}>普通 5张均分{CARD_META.F.baseProb}%</Text>
-      </div>
-    </div>
-  );
-
-  const renderWeekConfig = (weekKey: 'week1' | 'week2', weekData: WeeklyCombo) => {
-    const baseCard = setup.baseCards?.[weekKey] || weekData.cards[0];
-    const { baseCount, extras } = parseCards(weekData.cards, baseCard);
-    const totalCards = weekData.cards.length;
-    const needs = buildNeedsMap(weekData.cards);
-    const needReductionCount = Array.from(needs.values()).reduce((sum, n) => sum + Math.max(0, n - 1), 0);
-
-    return (
-      <div
-        style={{
-          background: 'white',
-          borderRadius: 16,
-          padding: 20,
-          marginBottom: 16,
-          boxShadow: '0 4px 20px rgba(81, 27, 58, 0.08)',
-          border: `1px solid ${COLORS.bgLight}`,
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <Space>
-            <Text strong style={{ color: COLORS.dark, fontSize: 16, fontWeight: 600 }}>{weekData.name}</Text>
-            <Tag style={{ background: COLORS.primary, color: 'white', border: 'none' }}>第 {weekData.deadline} 天截止</Tag>
-          </Space>
-          <Text style={{ color: COLORS.text, fontSize: 13 }}>{totalCards} 张卡</Text>
-        </div>
-
-        {/* Base Card */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            padding: 12,
-            background: COLORS.bgLight,
-            borderRadius: 12,
-            marginBottom: 12,
-          }}
-        >
-          <ThunderboltOutlined style={{ color: COLORS.primary }} />
-          <Text strong style={{ color: COLORS.text }}>基础卡</Text>
-          <Tag style={{ background: COLORS.accent, color: COLORS.text, border: 'none' }}>固定×2</Tag>
-          <Select value={baseCard} onChange={(v) => setBaseCard(weekKey, v)} style={{ width: 70 }} size="small" bordered={false}>
-            {ALL_CARDS.map(c => (
-              <Option key={c} value={c}>
-                <span style={{ color: RARITY_COLORS[CARD_META[c].type].bg, fontWeight: 600 }}>{c}</span>
-              </Option>
-            ))}
-          </Select>
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            {getCardBadge(baseCard, true)}
-            <Text style={{ marginLeft: 8, color: COLORS.text }}>×{baseCount}</Text>
-          </div>
-        </div>
-
-        {/* Extra Cards */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-          {extras.length > 0 ? extras.map((extra, idx) => {
-            const actualCount = weekData.cards.filter(c => c === extra.card && c !== baseCard).length;
-            return (
-              <div
-                key={idx}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '6px 10px',
-                  background: 'white',
-                  borderRadius: 10,
-                  border: `1.5px solid ${COLORS.bgLight}`,
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-                }}
-              >
-                <Select value={extra.card} onChange={(v) => updateExtraCard(weekKey, idx, v)} style={{ width: 50 }} size="small" bordered={false}>
-                  {ALL_CARDS.map(c => (
-                    <Option key={c} value={c}>
-                      <span style={{ color: RARITY_COLORS[CARD_META[c].type].bg }}>{c}</span>
-                    </Option>
-                  ))}
-                </Select>
-                <Space size={2}>
-                  <Button type="text" size="small" onClick={() => {}} disabled={actualCount <= 1}>−</Button>
-                  <Text style={{ fontSize: 13 }}>×{actualCount}</Text>
-                  <Button type="text" size="small" onClick={() => {}} disabled={totalCards >= 5}>+</Button>
-                </Space>
-                <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeExtraCard(weekKey, idx)} />
-              </div>
-            );
-          }) : <Text type="secondary" style={{ fontSize: 13 }}>无扩展卡</Text>}
-        </div>
-
-        {totalCards < 5 && (
-          <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={() => addExtraCard(weekKey)} style={{ color: COLORS.primary, borderColor: COLORS.primary }}>
-            添加扩展卡
-          </Button>
-        )}
-
-        <div style={{ marginTop: 12, fontSize: 12, color: COLORS.text, opacity: 0.7 }}>
-          {Array.from(needs.entries()).map(([card, n]) => `${card}×${n}(${n > 1 ? `第2张起降权` : '无降权'})`).join(', ')}
-        </div>
-      </div>
-    );
-  };
-
-  const renderCoefficientTable = (title: string, coeffsData: Record<string, CardCoefficients>, weekCombo: WeeklyCombo, otherWeekCombo: WeeklyCombo) => {
-    const needs = buildNeedsMap(weekCombo.cards);
-    const otherNeeds = buildNeedsMap(otherWeekCombo.cards);
-
-    // Combine cards from both weeks for display
-    const allRelevantCards = new Set([...weekCombo.cards, ...otherWeekCombo.cards]);
-
-    const dataSource = Array.from(allRelevantCards).sort().map(card => {
-      const coeffs = coeffsData[card] || [1.0];
+    const allCards = new Set([...weekData.cards, ...otherWeekData.cards]);
+    const data = Array.from(allCards).sort().map(card => {
       const demand = needs.get(card) || 0;
       const otherDemand = otherNeeds.get(card) || 0;
-      const isInCurrent = demand > 0;
-      const isInOther = otherDemand > 0;
-
+      const cardCoeffs = coeffs[card] || [1.0];
       return {
         key: card,
         card,
-        type: getCardType(card),
+        type: CARD_META[card].type,
         demand,
         otherDemand,
-        isInCurrent,
-        isInOther,
-        reductionSlots: Math.max(0, (needs.get(card) || 0) - 1),
-        coeffs,
+        coeffs: cardCoeffs,
+        hasReduction: demand > 1 || otherDemand > 1,
       };
     });
 
     return (
-      <div style={{ marginBottom: 24 }}>
-        <Title level={5} style={{ color: COLORS.dark, marginBottom: 12 }}>{title}</Title>
-        <Table
-          size="small"
-          dataSource={dataSource}
-          pagination={false}
-          style={{ background: 'white', borderRadius: 12, overflow: 'hidden' }}
-          rowClassName={(record) => record.isInOther && !record.isInCurrent ? 'cross-week-row' : ''}
-        >
-          <Table.Column
-            title="卡牌"
-            dataIndex="card"
-            width={70}
-            render={(v: string) => (
+      <Table
+        size="small"
+        dataSource={data}
+        pagination={false}
+        style={{ fontSize: 13 }}
+        columns={[
+          {
+            title: '卡牌',
+            dataIndex: 'card',
+            width: 60,
+            render: (v: string) => (
               <span style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 28, height: 28,
-                borderRadius: 6,
-                background: RARITY_COLORS[CARD_META[v].type].bg,
-                color: RARITY_COLORS[CARD_META[v].type].text,
+                fontFamily: "'IBM Plex Mono', monospace",
                 fontWeight: 600,
+                color: CARD_META[v].type === 'magic' ? PALETTE.accent :
+                       CARD_META[v].type === 'rare' ? PALETTE.success : PALETTE.textMuted,
               }}>{v}</span>
-            )}
-          />
-          <Table.Column
-            title="类型"
-            dataIndex="type"
-            width={80}
-            render={(v: string) => (
+            ),
+          },
+          {
+            title: '类型',
+            dataIndex: 'type',
+            width: 70,
+            render: (v: string) => TYPE_LABELS[v as 'magic'|'rare'|'common'].text,
+          },
+          {
+            title: '本周',
+            dataIndex: 'demand',
+            width: 60,
+            align: 'right',
+            render: (v: number) => v > 0 ?
+              <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{v}</span> :
+              <span style={{ color: PALETTE.textMuted }}>—</span>,
+          },
+          {
+            title: '跨周',
+            dataIndex: 'otherDemand',
+            width: 60,
+            align: 'right',
+            render: (v: number, record: any) => v > 0 ?
               <span style={{
-                padding: '2px 8px',
-                borderRadius: 4,
-                background: RARITY_COLORS[v as 'magic' | 'rare' | 'common'].bg,
-                color: RARITY_COLORS[v as 'magic' | 'rare' | 'common'].text,
-                fontSize: 12,
-              }}>{RARITY_COLORS[v as 'magic' | 'rare' | 'common'].label}</span>
-            )}
-          />
-          <Table.Column
-            title="本周需求"
-            dataIndex="demand"
-            width={90}
-            align="center"
-            render={(v: number) => v > 0 ? <Tag color="processing">{v}张</Tag> : <span style={{ color: '#999' }}>—</span>}
-          />
-          <Table.Column
-            title="跨周需求"
-            dataIndex="otherDemand"
-            width={90}
-            align="center"
-            render={(v: number) => v > 0 ? <Tag color="warning">{v}张</Tag> : <span style={{ color: '#999' }}>—</span>}
-          />
-          <Table.Column
-            title="降权系数"
-            dataIndex="coeffs"
-            render={(coeffs: number[], record: { demand: number }) => {
-              const activeSlots = Math.max(0, record.demand - 1);
-              return (
-                <Space size={4}>
-                  <span style={{
-                    padding: '2px 8px',
-                    borderRadius: 4,
-                    background: COLORS.bgLight,
-                    color: COLORS.text,
-                    fontSize: 12,
-                  }}>第1张: 1.0</span>
-                  {activeSlots > 0 && Array.from({ length: activeSlots }).map((_, i) => (
-                    <span key={i} style={{
-                      padding: '2px 8px',
-                      borderRadius: 4,
-                      background: (coeffs[i+1] || 1) < 0.01 ? '#511B3A' : (coeffs[i+1] || 1) < 0.1 ? '#6BA368' : '#9CFC97',
-                      color: (coeffs[i+1] || 1) < 0.01 ? '#E6FAFC' : COLORS.text,
-                      fontSize: 12,
-                      fontWeight: (coeffs[i+1] || 1) < 0.01 ? 600 : 400,
-                    }}>
-                      第{i+2}张: {(coeffs[i+1] || 0).toFixed(5)}
-                    </span>
-                  ))}
-                </Space>
-              );
-            }}
-          />
-        </Table>
-        <style>{`
-          .cross-week-row {
-            background: linear-gradient(90deg, rgba(156,252,151,0.1) 0%, transparent 100%);
-          }
-        `}</style>
-      </div>
+                fontFamily: "'IBM Plex Mono', monospace",
+                color: record.hasReduction ? PALETTE.accent : PALETTE.textMuted,
+              }}>{v}</span> :
+              <span style={{ color: PALETTE.textMuted }}>—</span>,
+          },
+          {
+            title: '降权系数',
+            dataIndex: 'coeffs',
+            render: (c: number[], record: any) => (
+              <Space size={8}>
+                <span style={{
+                  padding: '2px 6px',
+                  background: PALETTE.borderLight,
+                  borderRadius: 3,
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  fontSize: 12,
+                  color: PALETTE.textMuted,
+                }}>1.0</span>
+                {record.demand > 1 && <CoefficientDisplay value={c[1] || 0.01} />}
+                {record.demand > 2 && <CoefficientDisplay value={c[2] || 0.01} />}
+              </Space>
+            ),
+          },
+        ]}
+      />
     );
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: `linear-gradient(135deg, ${COLORS.bgLight} 0%, #fff 100%)`, padding: '32px 24px' }}>
-      <div style={{ maxWidth: 1400, margin: '0 auto' }}>
+    <div style={{ minHeight: '100vh', background: PALETTE.bg, padding: '40px 24px' }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         {/* Header */}
-        <div style={{ textAlign: 'center', marginBottom: 40 }}>
-          <Title style={{ color: COLORS.dark, fontSize: 32, fontWeight: 700, marginBottom: 8, letterSpacing: '-0.02em' }}>
-            神奇物种概率系统
-          </Title>
-          <Paragraph style={{ color: COLORS.text, fontSize: 15, opacity: 0.8 }}>
-            智能求解最优降权系数 · 精准控制集齐率
-          </Paragraph>
+        <div style={{ marginBottom: 40 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: 8 }}>
+            <Title level={2} style={{
+              margin: 0,
+              fontSize: 28,
+              fontWeight: 700,
+              letterSpacing: '-0.02em',
+              color: PALETTE.text,
+            }}>
+              概率系数调控系统
+            </Title>
+            <Tag style={{
+              background: PALETTE.accentLight,
+              color: PALETTE.accent,
+              border: 'none',
+              fontSize: 11,
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+            }}>
+              v6.5
+            </Tag>
+          </div>
+          <Text style={{ color: PALETTE.textMuted, fontSize: 14 }}>
+            蒙特卡洛模拟求解最优降权系数 · 目标完成率 4%
+          </Text>
         </div>
 
-        {/* Card Type Legend */}
-        <AntCard
-          style={{
-            background: 'white',
-            borderRadius: 16,
-            marginBottom: 24,
-            boxShadow: '0 4px 20px rgba(81, 27, 58, 0.06)',
-            border: 'none',
-          }}
-          bodyStyle={{ padding: 20 }}
-        >
-          <Text strong style={{ color: COLORS.dark, display: 'block', marginBottom: 12 }}>卡牌类型说明</Text>
-          <CardTypeLegend />
-        </AntCard>
+        {/* Configuration Balance Indicator - Signature Element */}
+        <ConfigBalanceBar setup={setup} />
 
-        <Row gutter={[24, 24]}>
-          <Col xs={24} lg={10}>
-            <div
-              style={{
-                background: 'white',
-                borderRadius: 20,
-                padding: 24,
-                boxShadow: '0 8px 32px rgba(81, 27, 58, 0.08)',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                <Text strong style={{ color: COLORS.dark, fontSize: 18 }}>卡组配置</Text>
-                <Button
-                  type="primary"
-                  icon={<CalculatorOutlined />}
-                  onClick={runSolve}
-                  loading={isCalculating}
-                  style={{
-                    background: COLORS.primary,
-                    borderColor: COLORS.primary,
-                    borderRadius: 8,
-                    height: 40,
-                    padding: '0 24px',
-                  }}
-                >
-                  {isCalculating ? '计算中...' : '开始测算'}
-                </Button>
-              </div>
-
-              {renderWeekConfig('week1', setup.week1)}
-              {renderWeekConfig('week2', setup.week2)}
-
-              {/* Daily Draws */}
-              <div
-                style={{
-                  padding: 16,
-                  background: COLORS.bgLight,
-                  borderRadius: 12,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 16,
-                  marginBottom: 16,
-                }}
-              >
-                <GiftOutlined style={{ color: COLORS.primary, fontSize: 20 }} />
-                <Text style={{ color: COLORS.text }}>每日抽奖次数</Text>
-                <InputNumber
-                  min={MIN_DAILY_DRAWS}
-                  max={MAX_DAILY_DRAWS}
-                  value={setup.dailyDraws}
-                  onChange={(v) => v && updateDailyDraws(v)}
-                  style={{ width: 80 }}
-                  size="small"
-                />
-                <Text type="secondary" style={{ fontSize: 12 }}>次/天</Text>
-              </div>
-
-              {/* Progress */}
-              {isCalculating && progress && (
-                <div style={{ padding: 16, background: COLORS.bgLight, borderRadius: 12 }}>
-                  <Progress
-                    percent={Math.round((progress.iteration / progress.totalIterations) * 100)}
-                    status="active"
-                    strokeColor={COLORS.primary}
-                    trailColor="rgba(107, 163, 104, 0.2)"
-                  />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
-                    <Text type="secondary" style={{ fontSize: 12 }}>迭代 {progress.iteration.toFixed(1)}/{progress.totalIterations}</Text>
-                    <Text type="secondary" style={{ fontSize: 12 }}>Week1: {progress.week1Rate.toFixed(1)}% | Week2: {progress.week2Rate.toFixed(1)}%</Text>
-                  </div>
-                </div>
-              )}
-
-              {/* Results */}
-              {result && (
-                <div style={{ marginTop: 20, padding: 20, background: COLORS.bgLight, borderRadius: 12 }}>
-                  <Row gutter={16}>
-                    <Col span={8} style={{ textAlign: 'center' }}>
-                      <Text type="secondary" style={{ fontSize: 12 }}>第一周</Text>
-                      <div style={{ fontSize: 28, fontWeight: 700, color: COLORS.primary }}>{result.actualRates.week1.toFixed(1)}%</div>
-                      <Text type="secondary" style={{ fontSize: 11 }}>目标4%</Text>
-                    </Col>
-                    <Col span={8} style={{ textAlign: 'center' }}>
-                      <Text type="secondary" style={{ fontSize: 12 }}>第二周</Text>
-                      <div style={{ fontSize: 28, fontWeight: 700, color: COLORS.primary }}>{result.actualRates.week2.toFixed(1)}%</div>
-                      <Text type="secondary" style={{ fontSize: 11 }}>目标4%</Text>
-                    </Col>
-                    <Col span={8} style={{ textAlign: 'center' }}>
-                      <Text type="secondary" style={{ fontSize: 12 }}>全收集</Text>
-                      <div style={{ fontSize: 28, fontWeight: 700, color: COLORS.dark }}>{result.fullCollectionRate.toFixed(1)}%</div>
-                      <Text type="secondary" style={{ fontSize: 11 }}>14天内</Text>
-                    </Col>
-                  </Row>
-                </div>
-              )}
-            </div>
+        {/* Main Layout: Side by Side Weeks */}
+        <Row gutter={24} style={{ marginBottom: 24 }}>
+          <Col xs={24} lg={12}>
+            <WeekPanel
+              title="第一周 (Day 1-7)"
+              weekKey="week1"
+              combo={setup.week1}
+              setup={setup}
+              onChange={setSetup}
+            />
           </Col>
-
-          <Col xs={24} lg={14}>
-            {result ? (
-              <div style={{ background: 'white', borderRadius: 20, padding: 24, boxShadow: '0 8px 32px rgba(81, 27, 58, 0.08)' }}>
-                <Tabs activeKey={activeTab} onChange={setActiveTab}>
-                  <TabPane tab={<span><TrophyOutlined /> 第一周系数</span>} key="week1">
-                    <Paragraph type="secondary" style={{ marginBottom: 16 }}>
-                      包含本周卡组及跨周卡牌的系数配置。
-                      <span style={{ background: 'rgba(156,252,151,0.3)', padding: '2px 6px', borderRadius: 4, marginLeft: 8 }}>绿色底纹</span>表示跨周卡牌
-                    </Paragraph>
-                    {renderCoefficientTable('降权系数详情', result.week1, setup.week1, setup.week2)}
-                  </TabPane>
-
-                  <TabPane tab={<span><TrophyOutlined /> 第二周系数</span>} key="week2">
-                    <Paragraph type="secondary" style={{ marginBottom: 16 }}>
-                      包含本周卡组及跨周卡牌的系数配置。
-                    </Paragraph>
-                    {renderCoefficientTable('降权系数详情', result.week2, setup.week2, setup.week1)}
-                  </TabPane>
-
-                  <TabPane tab={<span><TableOutlined /> 基础概率</span>} key="base">
-                    <Table
-                      size="small"
-                      pagination={false}
-                      dataSource={ALL_CARDS.map(card => ({
-                        card,
-                        type: CARD_META[card].type,
-                        name: CARD_META[card].name,
-                        prob: `${CARD_META[card].baseProb}%`,
-                      }))}
-                      columns={[
-                        { title: '卡牌', dataIndex: 'card', render: (v: string) => getCardBadge(v) },
-                        { title: '类型', dataIndex: 'type', render: (v: string) => RARITY_COLORS[v as 'magic' | 'rare' | 'common'].label },
-                        { title: '名称', dataIndex: 'name' },
-                        { title: '基础概率', dataIndex: 'prob' },
-                      ]}
-                    />
-                  </TabPane>
-                </Tabs>
-              </div>
-            ) : (
-              <div style={{ background: 'white', borderRadius: 20, padding: 80, textAlign: 'center', boxShadow: '0 8px 32px rgba(81, 27, 58, 0.08)' }}>
-                <CalculatorOutlined style={{ fontSize: 64, color: COLORS.bgLight }} />
-                <Title level={4} style={{ marginTop: 24, color: COLORS.text, opacity: 0.5 }}>点击"开始测算"生成系数</Title>
-              </div>
-            )}
+          <Col xs={24} lg={12}>
+            <WeekPanel
+              title="第二周 (Day 8-14)"
+              weekKey="week2"
+              combo={setup.week2}
+              setup={setup}
+              onChange={setSetup}
+            />
           </Col>
         </Row>
+
+        {/* Controls */}
+        <div style={{
+          background: PALETTE.surface,
+          borderRadius: 4,
+          border: `1px solid ${PALETTE.border}`,
+          padding: '20px 24px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 16,
+          marginBottom: 24,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div>
+              <Text style={{ fontSize: 11, color: PALETTE.textMuted, display: 'block', marginBottom: 4 }}>
+                DAILY DRAWS
+              </Text>
+              <InputNumber
+                min={1}
+                max={10}
+                value={setup.dailyDraws}
+                onChange={(v) => v && setSetup({ ...setup, dailyDraws: v })}
+                style={{ width: 80 }}
+              />
+            </div>
+            <div style={{
+              padding: '6px 12px',
+              background: PALETTE.bg,
+              borderRadius: 3,
+            }}>
+              <Text style={{ fontSize: 12, color: PALETTE.textMuted }}>
+                总计 {setup.dailyDraws * 14} 次抽奖 / 两周
+              </Text>
+            </div>
+          </div>
+
+          <Space>
+            <Button
+              type="text"
+              onClick={onNavigateToConfig}
+              style={{ color: PALETTE.textMuted }}
+            >
+              教程
+            </Button>
+            <Button
+              type="primary"
+              size="large"
+              icon={<CalculatorOutlined />}
+              onClick={runSolve}
+              loading={isCalculating}
+              style={{
+                background: PALETTE.accent,
+                borderColor: PALETTE.accent,
+                borderRadius: 4,
+                height: 44,
+                padding: '0 32px',
+                fontWeight: 500,
+              }}
+            >
+              {isCalculating ? '计算中...' : '开始求解'}
+            </Button>
+          </Space>
+        </div>
+
+        {/* Progress */}
+        {isCalculating && progress && (
+          <div style={{
+            background: PALETTE.surface,
+            borderRadius: 4,
+            border: `1px solid ${PALETTE.border}`,
+            padding: '24px 32px',
+            marginBottom: 24,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+              <Text style={{ fontSize: 13, color: PALETTE.text }}>
+                {progress.iteration < 2 ? 'Phase 1: 粗网格搜索' :
+                 progress.iteration < 2.9 ? 'Phase 2: 细网格优化' :
+                 'Phase 3: 最终验证'}
+              </Text>
+              <Text style={{
+                fontFamily: "'IBM Plex Mono', monospace",
+                fontSize: 13,
+                color: PALETTE.textMuted,
+              }}>
+                {Math.round((progress.iteration / progress.totalIterations) * 100)}%
+              </Text>
+            </div>
+            <Progress
+              percent={Math.round((progress.iteration / progress.totalIterations) * 100)}
+              status="active"
+              strokeColor={PALETTE.accent}
+              trailColor={PALETTE.borderLight}
+              showInfo={false}
+            />
+            <div style={{ display: 'flex', gap: 32, marginTop: 16 }}>
+              <div>
+                <Text style={{ fontSize: 11, color: PALETTE.textMuted, display: 'block' }}>WEEK 1</Text>
+                <span style={{
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  fontSize: 18,
+                  fontWeight: 600,
+                  color: PALETTE.text,
+                }}>{progress.week1Rate.toFixed(2)}%</span>
+              </div>
+              <div>
+                <Text style={{ fontSize: 11, color: PALETTE.textMuted, display: 'block' }}>WEEK 2</Text>
+                <span style={{
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  fontSize: 18,
+                  fontWeight: 600,
+                  color: PALETTE.text,
+                }}>{progress.week2Rate.toFixed(2)}%</span>
+              </div>
+              <div>
+                <Text style={{ fontSize: 11, color: PALETTE.textMuted, display: 'block' }}>ERROR</Text>
+                <span style={{
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  fontSize: 18,
+                  fontWeight: 600,
+                  color: progress.error < 1 ? PALETTE.success : PALETTE.accent,
+                }}>{progress.error.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Results */}
+        {showResults && result && (
+          <div style={{
+            background: PALETTE.surface,
+            borderRadius: 4,
+            border: `1px solid ${PALETTE.border}`,
+            overflow: 'hidden',
+          }}>
+            {/* Results Header */}
+            <div style={{
+              padding: '24px 32px',
+              borderBottom: `1px solid ${PALETTE.border}`,
+              background: PALETTE.bg,
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <Text style={{
+                    fontSize: 11,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    color: PALETTE.textMuted,
+                    display: 'block',
+                  }}>
+                    Optimization Results
+                  </Text>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
+                    <Title level={4} style={{ margin: 0, color: PALETTE.text }}>
+                      求解完成
+                    </Title>
+                    {result.converged && (
+                      <Tag style={{
+                        background: PALETTE.success,
+                        color: '#fff',
+                        border: 'none',
+                        fontSize: 11,
+                      }}>
+                        CONVERGED
+                      </Tag>
+                    )}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <Text style={{ fontSize: 11, color: PALETTE.textMuted, display: 'block' }}>
+                    Iterations
+                  </Text>
+                  <span style={{
+                    fontFamily: "'IBM Plex Mono', monospace",
+                    fontSize: 14,
+                    color: PALETTE.text,
+                  }}>{result.iterations}</span>
+                </div>
+              </div>
+
+              {/* Rate Cards */}
+              <Row gutter={16} style={{ marginTop: 24 }}>
+                <Col span={8}>
+                  <div style={{
+                    padding: '20px 24px',
+                    background: PALETTE.surface,
+                    borderRadius: 4,
+                    border: `1px solid ${PALETTE.border}`,
+                  }}>
+                    <Text style={{ fontSize: 11, color: PALETTE.textMuted, display: 'block' }}>WEEK 1</Text>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
+                      <span style={{
+                        fontFamily: "'IBM Plex Mono', monospace",
+                        fontSize: 32,
+                        fontWeight: 600,
+                        color: Math.abs(result.actualRates.week1 - 4) < 1 ? PALETTE.success : PALETTE.accent,
+                      }}>
+                        {result.actualRates.week1.toFixed(2)}
+                      </span>
+                      <span style={{ fontSize: 14, color: PALETTE.textMuted }}>%</span>
+                    </div>
+                    <Text style={{ fontSize: 11, color: PALETTE.textMuted }}>
+                      Target: 4.00%
+                    </Text>
+                  </div>
+                </Col>
+                <Col span={8}>
+                  <div style={{
+                    padding: '20px 24px',
+                    background: PALETTE.surface,
+                    borderRadius: 4,
+                    border: `1px solid ${PALETTE.border}`,
+                  }}>
+                    <Text style={{ fontSize: 11, color: PALETTE.textMuted, display: 'block' }}>WEEK 2</Text>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
+                      <span style={{
+                        fontFamily: "'IBM Plex Mono', monospace",
+                        fontSize: 32,
+                        fontWeight: 600,
+                        color: Math.abs(result.actualRates.week2 - 4) < 1 ? PALETTE.success : PALETTE.accent,
+                      }}>
+                        {result.actualRates.week2.toFixed(2)}
+                      </span>
+                      <span style={{ fontSize: 14, color: PALETTE.textMuted }}>%</span>
+                    </div>
+                    <Text style={{ fontSize: 11, color: PALETTE.textMuted }}>
+                      Target: 4.00%
+                    </Text>
+                  </div>
+                </Col>
+                <Col span={8}>
+                  <div style={{
+                    padding: '20px 24px',
+                    background: PALETTE.surface,
+                    borderRadius: 4,
+                    border: `1px solid ${PALETTE.border}`,
+                  }}>
+                    <Text style={{ fontSize: 11, color: PALETTE.textMuted, display: 'block' }}>FULL COLLECTION</Text>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
+                      <span style={{
+                        fontFamily: "'IBM Plex Mono', monospace",
+                        fontSize: 32,
+                        fontWeight: 600,
+                        color: PALETTE.text,
+                      }}>
+                        {result.fullCollectionRate.toFixed(2)}
+                      </span>
+                      <span style={{ fontSize: 14, color: PALETTE.textMuted }}>%</span>
+                    </div>
+                    <Text style={{ fontSize: 11, color: PALETTE.textMuted }}>
+                      14 days
+                    </Text>
+                  </div>
+                </Col>
+              </Row>
+            </div>
+
+            {/* Coefficient Tables */}
+            <div style={{ padding: '24px 32px' }}>
+              <Row gutter={48}>
+                <Col xs={24} lg={12}>
+                  <div style={{ marginBottom: 16 }}>
+                    <Text strong style={{ color: PALETTE.text, fontSize: 14 }}>
+                      Week 1 Coefficients
+                    </Text>
+                    <Text style={{ fontSize: 12, color: PALETTE.textMuted, marginLeft: 8 }}>
+                      应用于第一周的降权配置
+                    </Text>
+                  </div>
+                  {renderCoefficients(setup.week1, setup.week2, result.week1)}
+                </Col>
+                <Col xs={24} lg={12}>
+                  <div style={{ marginBottom: 16 }}>
+                    <Text strong style={{ color: PALETTE.text, fontSize: 14 }}>
+                      Week 2 Coefficients
+                    </Text>
+                    <Text style={{ fontSize: 12, color: PALETTE.textMuted, marginLeft: 8 }}>
+                      应用于第二周的降权配置
+                    </Text>
+                  </div>
+                  {renderCoefficients(setup.week2, setup.week1, result.week2)}
+                </Col>
+              </Row>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
