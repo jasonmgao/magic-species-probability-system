@@ -190,7 +190,7 @@ export function ProbabilityConfigPage({ onNavigateToSelection }: ProbabilityConf
           style={{ marginBottom: 16 }}
         />
 
-        <Title level={5}>🎴 场景：第3天，背包 {A:1, C:1}</Title>
+        <Title level={5}>🎴 场景：第3天，背包 {'{A:1, C:1}'}</Title>
         <Paragraph>
           <Tag color="blue">当日类型：普通日</Tag>
           <Tag color="purple">幸运卡：F（普通卡，1.2%固定）</Tag>
