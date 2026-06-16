@@ -217,12 +217,13 @@ export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps
               dataIndex: 'coeffs',
               render: (coeffs: number[]) => (
                 <Space>
-                  {coeffs.map((c, i) => (
-                    <Tag key={i} color={i === 0 ? 'success' : c < 0.02 ? 'error' : 'warning'}>
-                      持{i+1}: {i === 0 ? '1.0' : c.toFixed(3)}
+                  <Tag color="success">持0: 1.0</Tag>
+                  {coeffs.slice(1).map((c, i) => (
+                    <Tag key={i} color={c < 0.02 ? 'error' : 'warning'}>
+                      持{i+1}: {c < 0.001 ? c.toExponential(2) : c.toFixed(4)}
                     </Tag>
                   ))}
-                  <Tag color="default">≥{coeffs.length+1}张=0</Tag>
+                  {/* 注意：非组合卡没有这个限制，只是不显示 */}
                 </Space>
               ),
             },
