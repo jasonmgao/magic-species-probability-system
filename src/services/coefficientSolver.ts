@@ -383,11 +383,11 @@ export async function solveCoefficientsAsync(
     }
   }
 
-  // 细网格
-  const fine1Steps = 10;
-  const fine2Steps = 10;
-  const fine1Low = Math.max(0.0001, bestCoeff1 * 0.3);
-  const fine1High = Math.min(0.05, bestCoeff1 * 3);
+  // 细网格（简化：5×5=25次，添加进度更新）
+  const fine1Steps = 5;
+  const fine2Steps = 5;
+  const fine1Low = Math.max(0.0001, bestCoeff1 * 0.5);
+  const fine1High = Math.min(0.05, bestCoeff1 * 2);
   const fine2Low = Math.max(0.001, bestCoeff2 * 0.5);
   const fine2High = Math.min(0.3, bestCoeff2 * 2);
 
@@ -408,7 +408,7 @@ export async function solveCoefficientsAsync(
         }
       }
 
-      const res = await simulateBothWeeks(setup, testCoeffs, 2500);
+      const res = await simulateBothWeeks(setup, testCoeffs, 2000);
       const error = Math.abs(res.week1Rate - 4) + Math.abs(res.week2Rate - 4);
 
       if (error < bestTotalError) {
@@ -418,14 +418,30 @@ export async function solveCoefficientsAsync(
         bestW1Rate = res.week1Rate;
         bestW2Rate = res.week2Rate;
       }
+
+      // 🆕 细网格进度更新
+      const fineProgress = (i * (fine2Steps + 1) + j) / ((fine1Steps + 1) * (fine2Steps + 1));
+      if (onProgress) {
+        onProgress({
+          iteration: 2 + fineProgress * 0.8, // 2.0~2.8 是细网格
+          totalIterations: 3,
+          week1Rate: bestW1Rate,
+          week2Rate: bestW2Rate,
+          error: bestTotalError,
+          isConverged: false,
+        });
+      }
     }
   }
 
   if (onProgress) {
     onProgress({
-      iteration: 3, totalIterations: 3,
-      week1Rate: bestW1Rate, week2Rate: bestW2Rate,
-      error: bestTotalError, isConverged: false,
+      iteration: 2.9, // 最终验证前
+      totalIterations: 3,
+      week1Rate: bestW1Rate,
+      week2Rate: bestW2Rate,
+      error: bestTotalError,
+      isConverged: false,
     });
   }
 
