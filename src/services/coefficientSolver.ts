@@ -463,15 +463,19 @@ export async function solveCoefficientsAsync(
       });
     }
 
+    // 🎯 无论哪种情况，都记录最优系数
+    if (error < bestW2Error) {
+      bestW2Error = error;
+      bestW2Coeff = mid;
+      w2BestRate = res.week2Rate;
+    }
+
     if (res.week2Rate > 4.5) {
       high = mid;  // 太高，系数要降
     } else if (res.week2Rate < 3.5) {
       low = mid;   // 太低，系数要升
     } else {
-      // 已经在3.5%-4.5%之间，很接近了
-      bestW2Error = error;
-      bestW2Coeff = mid;
-      w2BestRate = res.week2Rate;
+      // 已经在3.5%-4.5%之间，很接近了，提前退出
       break;
     }
 
