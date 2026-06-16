@@ -395,97 +395,39 @@ export async function solveCoefficientsAsync(
 
   // 自定义第二周搜索（需要固定第一周系数）
   const w2Needs = countCardNeeds(setup.week2.cards);
-  // 🎯 新策略后范围恢复正常：
-  // 0% 说明系数太低，需要提高起点
-  let low = 0.005;   // 0.5%
-  let high = 0.05;   // 5%
+  // 🎯 直接用你计算的0.0148，不搜索了
+  const FIXED_COEFF = 0.0148;
+  const w2Coeffs = createUniformCoefficients(w2Needs, FIXED_COEFF);
+  const testRes = await simulateBothWeeks(setup, w1Coeffs, w2Coeffs, 10000);
+  console.log('[TEST] Coeff', FIXED_COEFF, '-> week2Rate:', testRes.week2Rate);
 
-  // 立即回调显示开始第二周搜索
-  if (onProgress) {
-    onProgress({
-      iteration: 2,
-      totalIterations: 10,
-      week1Rate: w1BestRate,
-      week2Rate: 0,
-      error: 100,
-      isConverged: false,
-    });
+  // 跳过搜索，直接用0.0148
+  let bestW2Coeff = FIXED_COEFF;
+  let bestW2Error = Math.abs(testRes.week2Rate - 4);
+  let w2BestRate = testRes.week2Rate;
+
+  // 简单微调：如果>5%就略降，如果<3%就略升
+  if (testRes.week2Rate > 5) {
+    const lowerCoeff = FIXED_COEFF * 0.7;
+    const lowerRes = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, lowerCoeff), 8000);
+    if (Math.abs(lowerRes.week2Rate - 4) < bestW2Error) {
+      bestW2Coeff = lowerCoeff;
+      bestW2Error = Math.abs(lowerRes.week2Rate - 4);
+      w2BestRate = lowerRes.week2Rate;
+    }
+    console.log('[TEST] Lower coeff', lowerCoeff, '-> week2Rate:', lowerRes.week2Rate);
+  } else if (testRes.week2Rate < 3) {
+    const higherCoeff = FIXED_COEFF * 1.3;
+    const higherRes = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, higherCoeff), 8000);
+    if (Math.abs(higherRes.week2Rate - 4) < bestW2Error) {
+      bestW2Coeff = higherCoeff;
+      bestW2Error = Math.abs(higherRes.week2Rate - 4);
+      w2BestRate = higherRes.week2Rate;
+    }
+    console.log('[TEST] Higher coeff', higherCoeff, '-> week2Rate:', higherRes.week2Rate);
   }
 
-  // 初步范围测试（更少的trial快速定位）
-  let testLow = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, low), 1500);
-  await new Promise(r => setTimeout(r, 0));
-  let testHigh = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, high), 1500);
-  await new Promise(r => setTimeout(r, 0));
 
-  // 大幅扩展范围直到覆盖目标（最多5次）
-  let w2AdjustAttempts = 0;
-  while (testLow.week2Rate > 4.5 && low > 1e-8 && w2AdjustAttempts < 5) {
-    low *= 0.1;  // 大幅降低
-    testLow = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, low), 1500);
-    await new Promise(r => setTimeout(r, 0));
-    w2AdjustAttempts++;
-  }
-  w2AdjustAttempts = 0;
-  while (testHigh.week2Rate < 3.5 && high < 0.001 && w2AdjustAttempts < 5) {
-    high *= 2;
-    testHigh = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, high), 1500);
-    await new Promise(r => setTimeout(r, 0));
-    w2AdjustAttempts++;
-  }
-
-  // 二分搜索第二周系数（更多迭代+实时更新进度）
-  let bestW2Coeff = low;
-  let bestW2Error = 100;
-
-  for (let iter = 0; iter < 10; iter++) {  // 增加到10轮
-    const mid = (low + high) / 2;
-    const w2Coeffs = createUniformCoefficients(w2Needs, mid);
-    const res = await simulateBothWeeks(setup, w1Coeffs, w2Coeffs, 3000);
-
-    const error = Math.abs(res.week2Rate - 4);
-    if (error < bestW2Error) {
-      bestW2Error = error;
-      bestW2Coeff = mid;
-      w2BestRate = res.week2Rate;
-    }
-
-    // 每轮都更新进度条
-    if (onProgress) {
-      onProgress({
-        iteration: 2 + iter,
-        totalIterations: 12,
-        week1Rate: w1BestRate,
-        week2Rate: res.week2Rate,
-        error: (Math.abs(w1BestRate - 4) + error),
-        isConverged: false,
-      });
-    }
-
-    // 🎯 无论哪种情况，都记录最优系数
-    if (error < bestW2Error) {
-      bestW2Error = error;
-      bestW2Coeff = mid;
-      w2BestRate = res.week2Rate;
-    }
-
-    if (res.week2Rate > 4.5) {
-      high = mid;  // 太高，系数要降
-    } else if (res.week2Rate < 3.5) {
-      low = mid;   // 太低，系数要升
-    } else {
-      // 已经在3.5%-4.5%之间，很接近了，提前退出
-      break;
-    }
-
-    // 让出主线程
-    await new Promise(r => setTimeout(r, 0));
-
-    // 精度够就提前退出
-    if (bestW2Error < 0.3) break;
-  }
-
-  w2BestCoeff = bestW2Coeff;
 
   if (onProgress) {
     onProgress({
