@@ -288,9 +288,10 @@ function drawOneCard(
 
   // 应用降权
   const weightedProbs: Record<string, number> = {};
-  // DEBUG: track if coefficient is actually applied
-  let debugCard = 'C';
-  let debugApplied = false;
+  // 🐛 CRITICAL DEBUG: Check if coefficient exists
+  const testCard = 'C';
+  console.log(`[COEFF] Day ${day}, currentCoeffs[${testCard}]=`, currentCoeffs[testCard], 'cards:', currentCombo.cards);
+
   for (const card of ALL_CARDS) {
     const holdCount = backpack[card] || 0;
     const isInCurrentWeek = currentCombo.cards.includes(card);
@@ -300,16 +301,14 @@ function drawOneCard(
     } else {
       const cardCoeffs = currentCoeffs[card];
       if (!cardCoeffs || holdCount === 0) {
+        if (card === testCard) console.log(`[COEFF] ${card}: holdCount=${holdCount}, NO REDUCTION (coeffs=${!!cardCoeffs})`);
         weightedProbs[card] = rawProbs[card];
       } else {
         // holdCount张后需要第holdCount+1张，用coeff[holdCount]
         const coeffIndex = Math.min(holdCount, cardCoeffs.length - 1);
         const coeff = cardCoeffs[coeffIndex];
+        if (card === testCard) console.log(`[COEFF] ${card}: hold=${holdCount}, coeff[${coeffIndex}]=${coeff}, prob=${rawProbs[card]}->${rawProbs[card]*coeff}`);
         weightedProbs[card] = rawProbs[card] * coeff;
-        if (card === debugCard && coeff < 1.0) {
-          debugApplied = true;
-          // console.log(`[DEBUG] ${card}: hold=${holdCount}, coeff=${coeff}, prob=${rawProbs[card]}->${weightedProbs[card]}`);
-        }
       }
     }
   }
