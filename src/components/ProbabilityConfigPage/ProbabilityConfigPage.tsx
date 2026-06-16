@@ -1,246 +1,268 @@
 /**
- * 概率配置页
- * 展示基础概率表、降权系数表、案例模拟
+ * 📖 教程页面 - 降权系数使用指南
+ * 通俗解释两组权重系数怎么用、概率怎么配
  */
 
-import { useState } from 'react';
-import { Tabs, Card as AntCard, Typography, Space, Table, Tag, Row, Col, Alert } from 'antd';
-import { ArrowLeftOutlined, InfoCircleOutlined, BookOutlined } from '@ant-design/icons';
-import { Button } from 'antd';
+import { Card as AntCard, Typography, Space, Table, Tag, Steps, Alert, Divider, Button } from 'antd';
+import { ArrowLeftOutlined, BookOutlined, CalculatorOutlined, CheckCircleOutlined } from '@ant-design/icons';
 
-const { Title, Text } = Typography;
-const { TabPane } = Tabs;
+const { Title, Text, Paragraph } = Typography;
+const { Step } = Steps;
 
 interface ProbabilityConfigPageProps {
   onNavigateToSelection?: () => void;
 }
 
-// 基础概率表数据
-const BASE_PROB_DATA = {
-  common: {
-    普通日: { 普通卡: 16.08, 稀有卡: 8.04, 神奇卡: 2.30, 幸运卡: 1.20 },
-    稀有日: { 普通卡: 14.87, 稀有卡: 7.44, 神奇卡: 2.12, 幸运卡: 1.20 },
-    神奇日: { 普通卡: 14.11, 稀有卡: 7.06, 神奇卡: 0.00, 幸运卡: 1.20 },
-  },
-};
-
-// 降权系数表数据
-const COEFF_DATA = [
-  { card: 'A/a', need0: '1.0', need1: '0.02', need2: '0', note: '第一套第2张，7天窗口' },
-  { card: 'B/b', need0: '1.0', need1: '0', need2: '0', note: '第一套只需要1张' },
-  { card: 'C/c', need0: '1.0', need1: '0.008', need2: '0', note: '第二套第2张，14天窗口' },
-  { card: 'D/d', need0: '1.0', need1: '0', need2: '0', note: '第二套只需要1张' },
-  { card: 'E~J', need0: '1.0', need1: '0', need2: '0', note: '填充卡每张只出1次' },
-];
-
-// 案例数据
-const CASE_EXAMPLE = {
-  condition: {
-    用户持有: 'A×1, B×0, C×0, D×0',
-    今日类型: '普通日',
-    幸运卡: 'E（普通卡）',
-    'A卡稀有度': '普通卡',
-    'B卡稀有度': '稀有卡',
-    'C卡稀有度': '普通卡',
-    'D卡稀有度': '神奇卡',
-  },
-  step1: [
-    { card: 'A卡', rarity: '普通卡', lucky: false, prob: 16.08 },
-    { card: 'B卡', rarity: '稀有卡', lucky: false, prob: 8.04 },
-    { card: 'C卡', rarity: '普通卡', lucky: false, prob: 16.08 },
-    { card: 'D卡', rarity: '神奇卡', lucky: false, prob: 2.30 },
-    { card: '幸运卡E', rarity: '普通卡', lucky: true, prob: 1.20 },
-    { card: '其他普通卡', rarity: '普通卡', lucky: false, prob: 16.08 },
-    { card: '其他稀有卡', rarity: '稀有卡', lucky: false, prob: 8.04 },
-  ],
-  step2: [
-    { card: 'A卡', hold: 1, coeff: 0.02, calc: '16.08% × 0.02', result: 0.32 },
-    { card: 'B卡', hold: 0, coeff: 1.0, calc: '8.04% × 1.0', result: 8.04 },
-    { card: 'C卡', hold: 0, coeff: 1.0, calc: '16.08% × 1.0', result: 16.08 },
-    { card: 'D卡', hold: 0, coeff: 1.0, calc: '2.30% × 1.0', result: 2.30 },
-  ],
-  step4: {
-    abcdSum: 26.74,
-    remaining: 73.26,
-    distribution: [
-      { type: '幸运卡', base: 1.20, weight: '1.63%', final: 1.19 },
-      { type: '其他普通卡(3张)', base: 48.24, weight: '65.58%', final: 16.01 },
-      { type: '其他稀有卡(3张)', base: 24.12, weight: '32.79%', final: 8.01 },
-    ],
-  },
-};
-
 export function ProbabilityConfigPage({ onNavigateToSelection }: ProbabilityConfigPageProps) {
   return (
-    <div style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
-      <div style={{ marginBottom: 24 }}>
-        <Title level={2}>📚 概率配置参考</Title>
-        <Text type="secondary">
-          基础概率表、降权系数表、计算案例
-        </Text>
-      </div>
+    <div style={{ padding: '24px', maxWidth: 1000, margin: '0 auto', background: '#f5f5f5', minHeight: '100vh' }}>
+      {/* 标题区 */}
+      <AntCard style={{ marginBottom: 24, textAlign: 'center' }}>
+        <BookOutlined style={{ fontSize: 48, color: '#1890ff', marginBottom: 16 }} />
+        <Title level={2}>降权系数使用指南</Title>
+        <Paragraph type="secondary" style={{ fontSize: 16, maxWidth: 700, margin: '0 auto' }}>
+          从零开始理解：两组权重系数是什么、怎么用、怎么配概率
+        </Paragraph>
+      </AntCard>
 
-      <Tabs defaultActiveKey="1" type="card">
-        {/* 基础概率表 */}
-        <TabPane tab="基础概率表" key="1">
-          <AntCard bordered={false}>
-            <Alert
-              message="基础概率表说明"
-              description="根据日期类型（普通日/稀有日/神奇日），非幸运卡的基础概率不同。幸运卡固定为1.2%。"
-              type="info"
-              showIcon
-              style={{ marginBottom: 16 }}
-            />
+      {/* 核心概念 */}
+      <AntCard title="📌 核心概念：什么是降权系数？" style={{ marginBottom: 24 }}>
+        <Alert
+          message="一句话理解"
+          description="降权系数 = '惩罚系数'。玩家持有的某周卡牌越多，抽到该周卡牌的概率就越低，避免玩家太容易集齐。"
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
 
-            {Object.entries(BASE_PROB_DATA.common).map(([dayType, probs]) => (
-              <div key={dayType} style={{ marginBottom: 24 }}>
-                <Title level={5}>{dayType}</Title>
+        <Title level={5}>🎯 为什么要降权？</Title>
+        <Paragraph>
+          想象一下：如果不降权，玩家抽28次（14天×2次），很容易就能集齐3张卡。
+          通过<strong>降权系数</strong>，我们把完成率控制在约<strong>4%</strong>，
+          让集齐成为一件有挑战性、值得炫耀的事。
+        </Paragraph>
+
+        <Divider />
+
+        <Title level={5}>📊 两组系数是什么？</Title>
+        <Table
+          size="small"
+          dataSource={[
+            { key: '1', name: '第一周系数', when: '第1-7天', what: '控制第一周卡牌的掉落概率', example: 'AAB组合，持1张时系数0.15' },
+            { key: '2', name: '第二周系数', when: '第8-14天', what: '控制第二周卡牌的掉落概率', example: 'CDE组合，持2张时系数0.08' },
+          ]}
+          columns={[
+            { title: '系数组', dataIndex: 'name', key: 'name', width: 120 },
+            { title: '生效时间', dataIndex: 'when', key: 'when', width: 120 },
+            { title: '作用', dataIndex: 'what', key: 'what' },
+            { title: '举例', dataIndex: 'example', key: 'example' },
+          ]}
+          pagination={false}
+        />
+      </AntCard>
+
+      {/* 使用步骤 */}
+      <AntCard title="📝 使用步骤：系数怎么用？" style={{ marginBottom: 24 }}>
+        <Steps direction="vertical" current={-1}>
+          <Step
+            title="确定卡组组合"
+            description={
+              <div style={{ marginTop: 8 }}>
+                <Text>先决定两周分别用什么卡。例如：</Text>
+                <ul>
+                  <li>第一周：AAB（需要2张A + 1张B，共3个位置）</li>
+                  <li>第二周：CCC（需要3张C，共3个位置）</li>
+                </ul>
+                <Tag color="blue">提示：卡越少越难集齐，需要更高的每日抽奖次数</Tag>
+              </div>
+            }
+          />
+          <Step
+            title="系统自动计算系数"
+            description={
+              <div style={{ marginTop: 8 }}>
+                <Text>点击【开始测算】，系统会：</Text>
+                <ol>
+                  <li>模拟成千上万次玩家抽卡过程</li>
+                  <li>调整系数让第一周完成率 ≈ 4%</li>
+                  <li>调整系数让第二周完成率 ≈ 4%</li>
+                </ol>
+                <Text type="warning">系数会自动显示在结果页，不需要手算！</Text>
+              </div>
+            }
+          />
+          <Step
+            title="按持有数应用系数"
+            description={
+              <div style={{ marginTop: 8 }}>
+                <Text>系统每一天抽卡时，会检查玩家<strong>背包里总共持有几张该周卡</strong>（不是单种卡）：</Text>
                 <Table
                   size="small"
+                  style={{ marginTop: 8, maxWidth: 500 }}
                   dataSource={[
-                    { key: '1', type: '幸运卡', value: `${probs.幸运卡}%`, note: '固定值' },
-                    { key: '2', type: '普通卡（非幸运）', value: `${probs.普通卡}%`, note: '5张均分' },
-                    { key: '3', type: '稀有卡（非幸运）', value: `${probs.稀有卡}%`, note: '4张均分' },
-                    { key: '4', type: '神奇卡（非幸运）', value: `${probs.神奇卡}%`, note: '仅1张' },
+                    { hold: 0, coeff: '1.0', desc: '还没该周卡，正常概率' },
+                    { hold: 1, coeff: '0.1~0.5', desc: '有1张了，概率降到10%~50%' },
+                    { hold: 2, coeff: '0.05~0.3', desc: '有2张了，概率再降' },
+                    { hold: '≥3', coeff: '0', desc: '已集齐，该周卡不出' },
                   ]}
                   columns={[
-                    { title: '类型', dataIndex: 'type', key: 'type' },
-                    { title: '概率', dataIndex: 'value', key: 'value' },
-                    { title: '说明', dataIndex: 'note', key: 'note' },
+                    { title: '持有数', dataIndex: 'hold', key: 'hold', width: 80 },
+                    { title: '系数示例', dataIndex: 'coeff', key: 'coeff', width: 100 },
+                    { title: '效果', dataIndex: 'desc', key: 'desc' },
                   ]}
                   pagination={false}
                 />
               </div>
-            ))}
-          </AntCard>
-        </TabPane>
-
-        {/* 降权系数表 */}
-        <TabPane tab="降权系数表" key="2">
-          <AntCard bordered={false}>
-            <Alert
-              message="降权系数设计原理"
-              description={
-                <ul style={{ margin: 0, paddingLeft: 20 }}>
-                  <li>A/a 第2张系数 0.02（2%）：第一套只有7天窗口，需要适当提高掉率</li>
-                  <li>C/c 第2张系数 0.008（0.8%）：第二套有14天窗口，累积效应更强</li>
-                  <li>B/b 和 D/d 只需要1张，有了就不再掉落</li>
-                  <li>填充卡 E-J 每张只出1次</li>
+            }
+          />
+          <Step
+            title="跨周关联（V5新特性）"
+            description={
+              <div style={{ marginTop: 8 }}>
+                <Text>关键设计：<strong>两周卡牌互相压制</strong></Text>
+                <ul>
+                  <li>第一周时，如果玩家背包里有很多C（下周卡），C的概率也会降</li>
+                  <li>这是为了防止玩家第一周"偷跑"存太多下周卡，导致第二周太容易完成</li>
                 </ul>
-              }
-              type="info"
-              showIcon
-              style={{ marginBottom: 16 }}
-            />
+                <Tag color="green">结果：两周完成率都被控在4%左右，公平且有挑战性</Tag>
+              </div>
+            }
+          />
+        </Steps>
+      </AntCard>
 
-            <Table
-              dataSource={COEFF_DATA}
-              columns={[
-                { title: '卡片', dataIndex: 'card', key: 'card' },
-                { title: '持有0张', dataIndex: 'need0', key: 'need0' },
-                { title: '持有1张', dataIndex: 'need1', key: 'need1' },
-                { title: '持有≥2张', dataIndex: 'need2', key: 'need2' },
-                { title: '说明', dataIndex: 'note', key: 'note' },
-              ]}
-              pagination={false}
-            />
-          </AntCard>
-        </TabPane>
+      {/* 概率计算原理 */}
+      <AntCard title="🔢 概率是怎么算的？（选读）" style={{ marginBottom: 24 }}>
+        <Alert
+          message="不需要手动计算！系统每天自动执行以下步骤"
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
 
-        {/* 计算案例 */}
-        <TabPane tab="计算案例" key="3">
-          <AntCard bordered={false}>
-            <Alert
-              message="案例条件"
-              description={
-                <Space direction="vertical">
-                  {Object.entries(CASE_EXAMPLE.condition).map(([key, value]) => (
-                    <Text key={key}><strong>{key}:</strong> {value}</Text>
-                  ))}
-                </Space>
-              }
-              type="info"
-              style={{ marginBottom: 16 }}
-            />
+        <Title level={5}>Step 1：基础概率</Title>
+        <Paragraph>每张卡有固定的"稀有度"和基础概率：</Paragraph>
+        <Table
+          size="small"
+          style={{ maxWidth: 400, marginBottom: 16 }}
+          dataSource={[
+            { card: '神奇卡（A）', base: '2%', note: '最稀有' },
+            { card: '稀有卡（B,C,D,E）', base: '7%', note: '4张均分' },
+            { card: '普通卡（F,G,H,I,J）', base: '14%', note: '5张均分' },
+          ]}
+          columns={[
+            { title: '卡类型', dataIndex: 'card', key: 'card' },
+            { title: '基础概率', dataIndex: 'base', key: 'base' },
+            { title: '说明', dataIndex: 'note', key: 'note' },
+          ]}
+          pagination={false}
+        />
 
-            <Title level={5}>Step 1-2: 查基础概率</Title>
-            <Table
-              size="small"
-              dataSource={CASE_EXAMPLE.step1}
-              columns={[
-                { title: '卡片', dataIndex: 'card', key: 'card' },
-                { title: '稀有度', dataIndex: 'rarity', key: 'rarity' },
-                { title: '是否幸运', dataIndex: 'lucky', key: 'lucky', render: v => v ? '✓' : '✗' },
-                { title: '基础概率', dataIndex: 'prob', key: 'prob', render: v => `${v}%` },
-              ]}
-              pagination={false}
-              style={{ marginBottom: 16 }}
-            />
+        <Divider style={{ margin: '12px 0' }} />
 
-            <Title level={5}>Step 3: 应用降权系数</Title>
-            <Table
-              size="small"
-              dataSource={CASE_EXAMPLE.step2}
-              columns={[
-                { title: '卡片', dataIndex: 'card', key: 'card' },
-                { title: '持有数', dataIndex: 'hold', key: 'hold' },
-                { title: '系数', dataIndex: 'coeff', key: 'coeff' },
-                { title: '计算', dataIndex: 'calc', key: 'calc' },
-                { title: '新概率', dataIndex: 'result', key: 'result', render: v => <Tag color="blue">{v}%</Tag> },
-              ]}
-              pagination={false}
-              style={{ marginBottom: 16 }}
-            />
+        <Title level={5}>Step 2：应用降权系数</Title>
+        <Paragraph>
+          <Text code>加权概率 = 基础概率 × 降权系数</Text>
+        </Paragraph>
+        <Text type="secondary">举例：A卡基础2%，持有1张时系数0.15 → 加权概率 = 2% × 0.15 = 0.3%</Text>
 
-            <Title level={5}>Step 4: 归一化处理</Title>
-            <Alert
-              message={`剩余概率 = 100% - ${CASE_EXAMPLE.step4.abcdSum}% = ${CASE_EXAMPLE.step4.remaining}%`}
-              description="剩余概率按原始权重在其他6张卡里重新分配"
-              type="warning"
-              style={{ marginBottom: 8 }}
-            />
-            <Table
-              size="small"
-              dataSource={CASE_EXAMPLE.step4.distribution}
-              columns={[
-                { title: '卡片类型', dataIndex: 'type', key: 'type' },
-                { title: '原始合计', dataIndex: 'base', key: 'base', render: v => `${v}%` },
-                { title: '权重', dataIndex: 'weight', key: 'weight' },
-                { title: '归一化后单张', dataIndex: 'final', key: 'final', render: v => `${v}%` },
-              ]}
-              pagination={false}
-              style={{ marginBottom: 16 }}
-            />
+        <Divider style={{ margin: '12px 0' }} />
 
-            <Title level={5}>Step 5: 最终概率分布</Title>
-            <Table
-              size="small"
-              dataSource={[
-                { rarity: '普通卡', cards: 'A(0.32%), C(16.08%), E(1.19%), F(16.01%), G(16.01%)', count: 5 },
-                { rarity: '稀有卡', cards: 'B(8.04%), H(8.01%), I(8.01%), J(8.01%)', count: 4 },
-                { rarity: '神奇卡', cards: 'D(2.30%)', count: 1 },
-              ]}
-              columns={[
-                { title: '稀有度', dataIndex: 'rarity', key: 'rarity' },
-                { title: '卡片及概率', dataIndex: 'cards', key: 'cards' },
-                { title: '数量', dataIndex: 'count', key: 'count' },
-              ]}
-              pagination={false}
-              summary={() => (
-                <Table.Summary.Row>
-                  <Table.Summary.Cell index={0}><strong>合计</strong></Table.Summary.Cell>
-                  <Table.Summary.Cell index={1}><strong>10张卡</strong></Table.Summary.Cell>
-                  <Table.Summary.Cell index={2}><Tag color="success">100%</Tag></Table.Summary.Cell>
-                </Table.Summary.Row>
-              )}
-            />
-          </AntCard>
-        </TabPane>
-      </Tabs>
+        <Title level={5}>Step 3：归一化</Title>
+        <Paragraph>
+          所有卡的加权概率加起来可能不等于100%，所以需要按比例缩放，让最终概率总和严格等于100%。
+        </Paragraph>
+        <Alert
+          message="关键效果"
+          description="当A/B被大幅降权时，C/D/E等的相对概率会上升，但它们之间保持原来的比例关系。"
+          type="warning"
+          showIcon
+        />
+      </AntCard>
 
-      {/* 底部导航 */}
-      <div style={{ marginTop: 24, textAlign: 'center' }}>
-        <Button type="default" size="large" icon={<ArrowLeftOutlined />} onClick={onNavigateToSelection}>
+      {/* 完整案例 */}
+      <AntCard title="📚 完整案例：AAB / CCC 组合" style={{ marginBottom: 24 }}>
+        <Alert
+          message="案例配置"
+          description="每日抽奖4次 | 第一周AAB（2张A+1张B）| 第二周CCC（3张C）"
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+
+        <Title level={5}>🎴 场景：第3天，背包 {A:1, C:1}</Title>
+        <Paragraph>
+          <Tag color="blue">当日类型：普通日</Tag>
+          <Tag color="purple">幸运卡：F（普通卡，1.2%固定）</Tag>
+        </Paragraph>
+
+        <Title level={5}>计算过程</Title>
+        <Table
+          size="small"
+          dataSource={[
+            { key: '1', card: 'A', type: '第一周', base: '2%', held: 1, coeff: 0.12, weighted: '0.24%' },
+            { key: '2', card: 'B', type: '第一周', base: '7%', held: 0, coeff: 1.0, weighted: '7.00%' },
+            { key: '3', card: 'C', type: '第二周', base: '7%', held: 1, coeff: 0.18, weighted: '1.26%' },
+            { key: '4', card: 'D/E', type: '填充卡', base: '7%×2', held: '-', coeff: 1.0, weighted: '14.00%' },
+            { key: '5', card: 'F(幸运)', type: '幸运卡', base: '-', held: '-', coeff: '-', weighted: '1.20%' },
+            { key: '6', card: 'G/H/I/J', type: '填充卡', base: '14%×4', held: '-', coeff: 1.0, weighted: '56.00%' },
+          ]}
+          columns={[
+            { title: '卡', dataIndex: 'card', key: 'card', width: 100 },
+            { title: '归属', dataIndex: 'type', key: 'type', width: 100 },
+            { title: '基础概率', dataIndex: 'base', key: 'base', width: 100 },
+            { title: '持有数', dataIndex: 'held', key: 'held', width: 80 },
+            { title: '系数', dataIndex: 'coeff', key: 'coeff', width: 80 },
+            { title: '加权后', dataIndex: 'weighted', key: 'weighted', render: v => <Tag>{v}</Tag> },
+          ]}
+          pagination={false}
+        />
+
+        <Divider style={{ margin: '16px 0' }} />
+
+        <Title level={5}>📊 最终概率（归一化后）</Title>
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Text><Tag color="purple">A</Tag> 0.24 / 79.7 = <strong>0.30%</strong>（极难出，因为已有1张A）</Text>
+          <Text><Tag color="blue">B</Tag> 7.0 / 79.7 = <strong>8.78%</strong></Text>
+          <Text><Tag color="blue">C</Tag> 1.26 / 79.7 = <strong>1.58%</strong>（跨周降权，已有1张C）</Text>
+          <Text><Tag>D/E</Tag> 14.0 / 79.7 = <strong>17.56%</strong></Text>
+          <Text><Tag color="green">F(幸运)</Tag> 1.2 / 79.7 = <strong>1.51%</strong></Text>
+          <Text><Tag color="green">G-J</Tag> 56.0 / 79.7 = <strong>70.27%</strong>（瓜分大部分概率）</Text>
+        </Space>
+
+        <Alert
+          message="结果分析"
+          description="虽然只有1张A和1张C，但跨周关联让两者都被压制。玩家此时很难抽到想要的卡，必须等到下一天再试。这正是4%完成率的核心机制！"
+          type="success"
+          showIcon
+          style={{ marginTop: 16 }}
+        />
+      </AntCard>
+
+      {/* 配置建议 */}
+      <AntCard title="💡 配置建议表" style={{ marginBottom: 24 }}>
+        <Table
+          size="small"
+          dataSource={[
+            { slots: '2张(如AB)', days: 7, draws: '6-8次', note: '卡很少，需要频繁抽奖才有机会集齐' },
+            { slots: '3张(如AAB)', days: 7, draws: '4-6次', note: '标准配置，AAB是经典选择' },
+            { slots: '4张(如AABB)', days: 7, draws: '3-5次', note: '卡稍多，可以适当减少抽奖次数' },
+            { slots: '5张(如AABBC)', days: 7, draws: '3-4次', note: '卡很多，很容易集齐，可保持低抽奖' },
+            { slots: '3张(如CCC)', days: 14, draws: '3-4次', note: '14天窗口已足够，不需要太高抽奖频率' },
+          ]}
+          columns={[
+            { title: '卡组大小', dataIndex: 'slots', key: 'slots' },
+            { title: '天数', dataIndex: 'days', key: 'days' },
+            { title: '建议每日抽奖', dataIndex: 'draws', key: 'draws' },
+            { title: '说明', dataIndex: 'note', key: 'note' },
+          ]}
+          pagination={false}
+        />
+      </AntCard>
+
+      {/* 底部返回 */}
+      <div style={{ textAlign: 'center' }}>
+        <Button type="primary" size="large" icon={<ArrowLeftOutlined />} onClick={onNavigateToSelection}>
           返回卡面选择页
         </Button>
       </div>

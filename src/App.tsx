@@ -8,7 +8,7 @@ import { CardSelection } from './pages/CardSelection';
 import { ProbabilityConfig } from './pages/ProbabilityConfig';
 import {
   CalculatorOutlined,
-  SettingOutlined,
+  BookOutlined,
 } from '@ant-design/icons';
 
 const { Header, Content, Footer } = Layout;
@@ -27,8 +27,8 @@ function App() {
     },
     {
       key: 'config',
-      icon: <SettingOutlined />,
-      label: '概率配置',
+      icon: <BookOutlined />,
+      label: '使用教程',
     },
   ];
 
