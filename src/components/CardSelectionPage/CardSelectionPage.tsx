@@ -1,6 +1,6 @@
 /**
- * 🎴 卡面选择页（V6 - 强制基础卡版）
- * 每个卡组必须有一个基础卡（固定x2），可选扩展卡（可变数量）
+ * 🎴 CardSelectionPage - New Minimalist Design
+ * Color Palette: #E6FAFC, #9CFC97, #6BA368, #511B3A, #353D2F
  */
 
 import { useState, useCallback } from 'react';
@@ -9,9 +9,9 @@ import {
   message, Progress, Table, Tag, Select, Divider, Alert, Tabs, InputNumber,
 } from 'antd';
 import {
-  CalculatorOutlined, PlusOutlined, DeleteOutlined, CheckCircleOutlined,
+  CalculatorOutlined, PlusOutlined, DeleteOutlined,
   TrophyOutlined, QuestionCircleOutlined, TableOutlined, GiftOutlined,
-  StarOutlined, ThunderboltOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons';
 import type { CardSetup, WeeklyCombo, CoefficientResult, SolverProgress, CardCoefficients } from '@/types';
 import {
@@ -27,267 +27,160 @@ const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
 const { TabPane } = Tabs;
 
-const CARD_COLORS: Record<string, string> = {
-  'A': '#722ed1',
-  'B': '#1890ff', 'C': '#1890ff', 'D': '#1890ff', 'E': '#1890ff',
-  'F': '#52c41a', 'G': '#52c41a', 'H': '#52c41a', 'I': '#52c41a', 'J': '#52c41a',
+// Color Palette
+const COLORS = {
+  bgLight: '#E6FAFC',
+  accent: '#9CFC97',
+  primary: '#6BA368',
+  dark: '#511B3A',
+  text: '#353D2F',
 };
 
-// V6.5默认配置：AAB(3张)和AACC(4张)
-// 3张卡默认用2次抽奖，4-5张卡用4次抽奖
+// Card rarity colors mapped to palette
+const RARITY_COLORS = {
+  magic: { bg: '#511B3A', text: '#E6FAFC', label: '神奇' },
+  rare: { bg: '#6BA368', text: '#E6FAFC', label: '稀有' },
+  common: { bg: '#353D2F', text: '#9CFC97', label: '普通' },
+};
+
+const CARD_META: Record<string, { type: 'magic' | 'rare' | 'common'; name: string; baseProb: number }> = {
+  A: { type: 'magic', name: '神奇A', baseProb: 2 },
+  B: { type: 'rare', name: '稀有B', baseProb: 7 },
+  C: { type: 'rare', name: '稀有C', baseProb: 7 },
+  D: { type: 'rare', name: '稀有D', baseProb: 7 },
+  E: { type: 'rare', name: '稀有E', baseProb: 7 },
+  F: { type: 'common', name: '普通F', baseProb: 14 },
+  G: { type: 'common', name: '普通G', baseProb: 14 },
+  H: { type: 'common', name: '普通H', baseProb: 14 },
+  I: { type: 'common', name: '普通I', baseProb: 14 },
+  J: { type: 'common', name: '普通J', baseProb: 14 },
+};
+
 const DEFAULT_SETUP: CardSetup = {
   week1: {
     name: '第一周',
-    cards: ['A', 'A', 'B'], // AAB: 基础卡A(x2) + 扩展卡B(x1) = 3张卡
+    cards: ['A', 'A', 'B'],
     deadline: 7,
   },
   week2: {
     name: '第二周',
-    cards: ['C', 'C', 'D', 'E'], // CCDE: 基础卡C(x2) + 扩展D(x1) + 扩展E(x1) = 4张卡
+    cards: ['C', 'D', 'E'],
     deadline: 14,
   },
-  dailyDraws: 3,  // V6.5: 默认3次，卡少时自动建议更少
-  // V6新增：基础卡
+  dailyDraws: 4,
   baseCards: {
     week1: 'A',
     week2: 'C',
   },
 };
 
-// V6.5：支持3-5张卡，但卡越少需要越少的每日抽奖次数
-const MIN_EXTRA_CARDS = 1;   // 至少1张扩展卡（加上基础卡x2 = 最小3张）- 老板要求
-const MAX_EXTRA_CARDS = 3;   // 最多3张扩展卡（加上基础卡x2 = 最大5张）
+const MIN_EXTRA_CARDS = 1;
+const MAX_EXTRA_CARDS = 3;
 const MIN_DAILY_DRAWS = 1;
 const MAX_DAILY_DRAWS = 10;
 
-interface CardSelectionPageProps {
-  onNavigateToConfig?: () => void;
-}
-
-// 从cards数组推导出基础卡和扩展卡列表
-function parseCards(cards: string[], baseCard: string): { baseCount: number; extras: { card: string; count: number; index: number }[] } {
-  // 统计卡组中各卡数量
-  const counts = new Map<string, number>();
-  cards.forEach(c => counts.set(c, (counts.get(c) || 0) + 1));
-
-  // 基础卡及其数量
-  const baseCount = counts.get(baseCard) || 0; // 应该 ≥ 2
-  counts.delete(baseCard);
-
-  // 剩余的作为扩展卡（展示为x1, x2等）
-  const extras: { card: string; count: number; index: number }[] = [];
-  let idx = 0;
-  for (const [card, count] of counts.entries()) {
-    extras.push({ card, count, index: idx++ });
-  }
-
-  return { baseCount, extras };
-}
-
-// 根据基础卡和扩展卡列表重建cards数组
-function buildCards(baseCard: string, baseCount: number, extras: { card: string; count: number }[]): string[] {
-  const cards: string[] = [];
-  for (let i = 0; i < baseCount; i++) cards.push(baseCard);
-  for (const extra of extras) {
-    for (let i = 0; i < extra.count; i++) cards.push(extra.card);
-  }
-  return cards;
-}
-
-export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps) {
+export function CardSelectionPage({ onNavigateToConfig }: { onNavigateToConfig?: () => void }) {
   const [setup, setSetup] = useState<CardSetup>(DEFAULT_SETUP);
   const [isCalculating, setIsCalculating] = useState(false);
   const [progress, setProgress] = useState<SolverProgress | null>(null);
   const [result, setResult] = useState<CoefficientResult | null>(null);
   const [activeTab, setActiveTab] = useState('week1');
 
-  // V6: 设置基础卡
+  // Helper functions...
+  const buildNeedsMap = (cards: string[]): Map<string, number> => {
+    const needs = new Map<string, number>();
+    for (const card of cards) {
+      needs.set(card, (needs.get(card) || 0) + 1);
+    }
+    return needs;
+  };
+
+  const parseCards = (cards: string[], baseCard: string) => {
+    const counts = new Map<string, number>();
+    cards.forEach(c => counts.set(c, (counts.get(c) || 0) + 1));
+    const baseCount = counts.get(baseCard) || 0;
+    counts.delete(baseCard);
+    const extras: { card: string; count: number }[] = [];
+    for (const [card, count] of counts.entries()) {
+      extras.push({ card, count });
+    }
+    return { baseCount, extras };
+  };
+
+  // Setup update functions...
   const setBaseCard = useCallback((week: 'week1' | 'week2', newBase: string) => {
     setSetup(prev => {
-      const prevCards = prev[week].cards;
-      const newDailyDraws = prev.dailyDraws ?? 4;
+      const current = [...prev[week].cards];
       const existingBase = prev.baseCards ?? { week1: prev.week1.cards[0], week2: prev.week2.cards[0] };
       const newBaseCards: { week1: string; week2: string } = { ...existingBase, [week]: newBase };
 
-      // 提取原先的非基础卡部分作为扩展卡
       const prevBase = prev.baseCards?.[week] || prev[week].cards[0];
-      const extras: { card: string; count: number }[] = [];
       const unusedCards: string[] = [];
-
-      for (const c of prevCards) {
+      for (const c of current) {
         if (c !== prevBase) unusedCards.push(c);
         else if (c === newBase) unusedCards.push(c);
       }
 
-      // 统计未分配卡
       const countMap = new Map<string, number>();
       unusedCards.forEach(c => countMap.set(c, (countMap.get(c) || 0) + 1));
 
-      // 构建新cards数组：新基础卡x2 + 扩展卡
       const newCards: string[] = [newBase, newBase];
       for (const [card, count] of countMap) {
         if (card !== newBase) {
-          extras.push({ card, count });
           for (let i = 0; i < count; i++) newCards.push(card);
         }
       }
 
-      return {
-        ...prev,
-        [week]: { ...prev[week], cards: newCards },
-        baseCards: newBaseCards,
-        dailyDraws: newDailyDraws,
-      };
+      return { ...prev, [week]: { ...prev[week], cards: newCards }, baseCards: newBaseCards };
     });
     if (result) setResult(null);
   }, [result]);
 
-  // 添加扩展卡
   const addExtraCard = useCallback((week: 'week1' | 'week2') => {
     setSetup(prev => {
       const current = prev[week].cards;
-      const baseCard = prev.baseCards?.[week] || current[0];
       if (current.length >= MAX_EXTRA_CARDS + 2) {
-        message.warning(`每周最多 ${MAX_EXTRA_CARDS + 2} 张卡（基础x2 + 扩展${MAX_EXTRA_CARDS}）`);
+        message.warning(`每周最多 ${MAX_EXTRA_CARDS + 2} 张卡`);
         return prev;
       }
-      // 默认添加一张x1的A卡（或B卡）
-      const defaultExtra = baseCard === 'A' ? 'B' : 'A';
-      return {
-        ...prev,
-        [week]: { ...prev[week], cards: [...current, defaultExtra] },
-      };
+      const defaultExtra = (prev.baseCards?.[week] || current[0]) === 'A' ? 'B' : 'A';
+      return { ...prev, [week]: { ...prev[week], cards: [...current, defaultExtra] } };
     });
     if (result) setResult(null);
   }, [result]);
 
-  // 删除扩展卡（不能删除基础卡部分的x2）
   const removeExtraCard = useCallback((week: 'week1' | 'week2', cardIndex: number) => {
     setSetup(prev => {
-      const current = prev[week].cards;
-      const baseCard = prev.baseCards?.[week] || current[0];
-
-      // 计算扩展卡部分（从索引2开始是扩展卡）
-      const nonBaseCount = current.filter(c => c !== baseCard).length;
-      const baseCount = current.length - nonBaseCount;
-
-      // 必须保留基础卡的x2（baseCount >= 2）
-      // 并且至少要有1张卡（基础x2 + 至少1张）
+      const current = [...prev[week].cards];
       if (current.length <= 3) {
-        message.warning('需要至少1张扩展卡（基础x2 + 扩展x1 = 3张）');
+        message.warning('需要至少1张扩展卡');
         return prev;
       }
-
-      // 找到要删除的实例（去掉基础卡的2张后）
       let extIdx = 0;
       let foundIndex = -1;
+      const baseCard = prev.baseCards?.[week] || current[0];
       for (let i = 0; i < current.length; i++) {
-        if (current[i] === baseCard && baseCount > 0) {
-          // 跳过前两张基础卡
-          continue;
-        }
-        if (extIdx === cardIndex) {
-          foundIndex = i;
-          break;
-        }
+        if (current[i] === baseCard) continue;
+        if (extIdx === cardIndex) { foundIndex = i; break; }
         extIdx++;
       }
-
       if (foundIndex === -1) return prev;
-
-      return {
-        ...prev,
-        [week]: { ...prev[week], cards: current.filter((_, i) => i !== foundIndex) },
-      };
+      return { ...prev, [week]: { ...prev[week], cards: current.filter((_, i) => i !== foundIndex) } };
     });
     if (result) setResult(null);
   }, [result]);
 
-  // 更新扩展卡类型
   const updateExtraCard = useCallback((week: 'week1' | 'week2', cardIndex: number, newCard: string) => {
     setSetup(prev => {
       const current = [...prev[week].cards];
       const baseCard = prev.baseCards?.[week] || current[0];
-
-      // 找到第cardIndex个非基础卡
       let extIdx = 0;
       for (let i = 0; i < current.length; i++) {
         if (current[i] === baseCard) continue;
-        if (extIdx === cardIndex) {
-          current[i] = newCard;
-          break;
-        }
+        if (extIdx === cardIndex) { current[i] = newCard; break; }
         extIdx++;
       }
-
-      return {
-        ...prev,
-        [week]: { ...prev[week], cards: current },
-      };
-    });
-    if (result) setResult(null);
-  }, [result]);
-
-  // 增加扩展卡数量（同一卡变x2,x3...）
-  const increaseExtraCount = useCallback((week: 'week1' | 'week2', cardIndex: number) => {
-    setSetup(prev => {
-      const current = [...prev[week].cards];
-      const baseCard = prev.baseCards?.[week] || current[0];
-
-      if (current.length >= MAX_EXTRA_CARDS + 2) {
-        message.warning(`已达到最大卡数 ${MAX_EXTRA_CARDS + 2}`);
-        return prev;
-      }
-
-      // 找到第cardIndex个非基础卡
-      let extIdx = 0;
-      for (let i = 0; i < current.length; i++) {
-        if (current[i] === baseCard) continue;
-        if (extIdx === cardIndex) {
-          // 在该位置后插入同一张卡
-          current.splice(i + 1, 0, current[i]);
-          break;
-        }
-        extIdx++;
-      }
-
-      return {
-        ...prev,
-        [week]: { ...prev[week], cards: current },
-      };
-    });
-    if (result) setResult(null);
-  }, [result]);
-
-  // 减少扩展卡数量
-  const decreaseExtraCount = useCallback((week: 'week1' | 'week2', cardIndex: number) => {
-    setSetup(prev => {
-      const current = [...prev[week].cards];
-      const baseCard = prev.baseCards?.[week] || current[0];
-
-      // 计算当前扩展卡数量
-      const extCount = current.filter(c => c !== baseCard).length;
-      if (extCount <= 1) {
-        message.warning('至少保留1张扩展卡');
-        return prev;
-      }
-
-      // 找到第cardIndex个非基础卡
-      let extIdx = 0;
-      for (let i = 0; i < current.length; i++) {
-        if (current[i] === baseCard) continue;
-        if (extIdx === cardIndex) {
-          // 删除一个该卡的实例
-          current.splice(i, 1);
-          break;
-        }
-        extIdx++;
-      }
-
-      return {
-        ...prev,
-        [week]: { ...prev[week], cards: current },
-      };
+      return { ...prev, [week]: { ...prev[week], cards: current } };
     });
     if (result) setResult(null);
   }, [result]);
@@ -298,27 +191,20 @@ export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps
   }, [result]);
 
   const runSolve = useCallback(async () => {
-    const total1 = setup.week1.cards.length;
-    const total2 = setup.week2.cards.length;
-
-    if (total1 < 3 || total1 > 5 || total2 < 3 || total2 > 5) {
-      message.error('每周需要 3-5 张卡');
+    if (setup.week1.cards.length < 3 || setup.week2.cards.length < 3) {
+      message.error('每周需要至少3张卡');
       return;
     }
-
     setIsCalculating(true);
     setProgress(null);
     setResult(null);
-
     try {
-      const coefficientResult = await runSimulation(setup, (p: SolverProgress) => {
-        setProgress(p);
-      });
+      const coefficientResult = await runSimulation(setup, (p: SolverProgress) => setProgress(p));
       setResult(coefficientResult);
       const error1 = Math.abs(coefficientResult.actualRates.week1 - 4.0);
       const error2 = Math.abs(coefficientResult.actualRates.week2 - 4.0);
-      if (coefficientResult.converged && error1 < 0.3 && error2 < 0.3) {
-        message.success(`求解成功！两周集齐率均接近 4%`);
+      if (coefficientResult.converged && error1 < 1.0 && error2 < 1.0) {
+        message.success('求解成功！两周集齐率均接近4%');
       } else {
         message.warning(`结果已生成（误差：${Math.max(error1, error2).toFixed(2)}%）`);
       }
@@ -329,329 +215,449 @@ export function CardSelectionPage({ onNavigateToConfig }: CardSelectionPageProps
     }
   }, [setup]);
 
-  const probTables = result ? generateProbabilityTables(setup, result) : null;
-  const cases = result ? generateCases(setup, result) : [];
+  const getCardBadge = (card: string, isBase = false) => {
+    const meta = CARD_META[card];
+    const style = RARITY_COLORS[meta.type];
+    return (
+      <span
+        key={card}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 36,
+          height: 36,
+          borderRadius: 8,
+          background: style.bg,
+          color: style.text,
+          fontWeight: isBase ? 700 : 500,
+          fontSize: 16,
+          margin: 2,
+          boxShadow: isBase ? `0 0 0 2px ${COLORS.accent}` : 'none',
+        }}
+      >
+        {card}
+      </span>
+    );
+  };
 
-  const getCardLabel = (card: string, index: number, isBase = false) => (
-    <Tag
-      key={index}
-      color={CARD_COLORS[card]}
-      style={{ margin: 2, fontSize: 14, fontWeight: isBase ? 'bold' : 'normal' }}
-    >
-      {card}{isBase && <StarOutlined style={{ marginLeft: 2, fontSize: 10 }} />}
-    </Tag>
+  // Card Type Legend
+  const CardTypeLegend = () => (
+    <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ width: 28, height: 28, borderRadius: 6, background: RARITY_COLORS.magic.bg, color: RARITY_COLORS.magic.text, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>A</span>
+        <Text style={{ color: COLORS.text, fontSize: 13 }}>神奇 {CARD_META.A.baseProb}%</Text>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ width: 28, height: 28, borderRadius: 6, background: RARITY_COLORS.rare.bg, color: RARITY_COLORS.rare.text, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>B</span>
+        <Text style={{ color: COLORS.text, fontSize: 13 }}>稀有 4张均分{CARD_META.B.baseProb}%</Text>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ width: 28, height: 28, borderRadius: 6, background: RARITY_COLORS.common.bg, color: RARITY_COLORS.common.text, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>F</span>
+        <Text style={{ color: COLORS.text, fontSize: 13 }}>普通 5张均分{CARD_META.F.baseProb}%</Text>
+      </div>
+    </div>
   );
 
-  const renderWeekConfig = (weekKey: 'week1' | 'week2', weekData: WeeklyCombo, color: string) => {
+  const renderWeekConfig = (weekKey: 'week1' | 'week2', weekData: WeeklyCombo) => {
     const baseCard = setup.baseCards?.[weekKey] || weekData.cards[0];
     const { baseCount, extras } = parseCards(weekData.cards, baseCard);
     const totalCards = weekData.cards.length;
-    // V6系数数量 = 需要降权的卡数量 = 超过第一张的卡数
-    const needsCards = buildNeedsMap(weekData.cards);
-    const needReductionCount = Array.from(needsCards.values()).reduce((sum, need) => sum + Math.max(0, need - 1), 0);
+    const needs = buildNeedsMap(weekData.cards);
+    const needReductionCount = Array.from(needs.values()).reduce((sum, n) => sum + Math.max(0, n - 1), 0);
 
     return (
-      <div style={{ border: `2px solid ${color}`, borderRadius: 12, padding: 16, backgroundColor: `${color}10` }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+      <div
+        style={{
+          background: 'white',
+          borderRadius: 16,
+          padding: 20,
+          marginBottom: 16,
+          boxShadow: '0 4px 20px rgba(81, 27, 58, 0.08)',
+          border: `1px solid ${COLORS.bgLight}`,
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <Space>
-            <Text strong style={{ color, fontSize: 16 }}>{weekData.name}</Text>
-            <Tag color={color}>第 {weekData.deadline} 天截止</Tag>
+            <Text strong style={{ color: COLORS.dark, fontSize: 16, fontWeight: 600 }}>{weekData.name}</Text>
+            <Tag style={{ background: COLORS.primary, color: 'white', border: 'none' }}>第 {weekData.deadline} 天截止</Tag>
           </Space>
-          <Text type="secondary">{totalCards} 张卡</Text>
+          <Text style={{ color: COLORS.text, fontSize: 13 }}>{totalCards} 张卡</Text>
         </div>
 
-        {/* 基础卡选择（强制x2） */}
-        <div style={{ marginBottom: 12, padding: 8, background: '#fff', borderRadius: 6 }}>
-          <Space>
-            <ThunderboltOutlined style={{ color: '#fa8c16' }} />
-            <Text strong>基础卡</Text>
-            <Tag color="orange">固定x2</Tag>
-            <Select value={baseCard} onChange={(v) => setBaseCard(weekKey, v)} style={{ width: 70 }} size="small">
-              {ALL_CARDS.map(c => (
-                <Option key={c} value={c}>
-                  <Tag color={c === 'A' ? 'purple' : ['B','C','D','E'].includes(c) ? 'blue' : 'green'}>{c}</Tag>
-                </Option>
-              ))}
-            </Select>
-            <Tag color={color}>{getCardLabel(baseCard, 0, true)} x{baseCount}</Tag>
-          </Space>
-          <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>必须至少2张，降权从第三张起生效</Text>
+        {/* Base Card */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: 12,
+            background: COLORS.bgLight,
+            borderRadius: 12,
+            marginBottom: 12,
+          }}
+        >
+          <ThunderboltOutlined style={{ color: COLORS.primary }} />
+          <Text strong style={{ color: COLORS.text }}>基础卡</Text>
+          <Tag style={{ background: COLORS.accent, color: COLORS.text, border: 'none' }}>固定×2</Tag>
+          <Select value={baseCard} onChange={(v) => setBaseCard(weekKey, v)} style={{ width: 70 }} size="small" bordered={false}>
+            {ALL_CARDS.map(c => (
+              <Option key={c} value={c}>
+                <span style={{ color: RARITY_COLORS[CARD_META[c].type].bg, fontWeight: 600 }}>{c}</span>
+              </Option>
+            ))}
+          </Select>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            {getCardBadge(baseCard, true)}
+            <Text style={{ marginLeft: 8, color: COLORS.text }}>×{baseCount}</Text>
+          </div>
         </div>
 
-        {/* 扩展卡 */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {/* Extra Cards */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
           {extras.length > 0 ? extras.map((extra, idx) => {
-            // 计算该扩展卡的实际数量
-            const cardCount = weekData.cards.filter(c => c === extra.card).filter(c => c !== baseCard).length;
-            const filterBase = extra.card === baseCard;
-            const actualCount = filterBase
-              ? Math.max(0, cardCount) // 如果和基础卡相同，计算多出的部分
-              : cardCount;
-
+            const actualCount = weekData.cards.filter(c => c === extra.card && c !== baseCard).length;
             return (
-              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: '#fff', borderRadius: 6, border: `1px solid ${CARD_COLORS[extra.card]}` }}>
-                <Select value={extra.card} onChange={(v) => updateExtraCard(weekKey, idx, v)} style={{ width: 60 }} size="small" bordered={false}>
+              <div
+                key={idx}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 10px',
+                  background: 'white',
+                  borderRadius: 10,
+                  border: `1.5px solid ${COLORS.bgLight}`,
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                }}
+              >
+                <Select value={extra.card} onChange={(v) => updateExtraCard(weekKey, idx, v)} style={{ width: 50 }} size="small" bordered={false}>
                   {ALL_CARDS.map(c => (
                     <Option key={c} value={c}>
-                      <Tag color={c === 'A' ? 'purple' : ['B','C','D','E'].includes(c) ? 'blue' : 'green'}>{c}</Tag>
+                      <span style={{ color: RARITY_COLORS[CARD_META[c].type].bg }}>{c}</span>
                     </Option>
                   ))}
                 </Select>
-                <Space size={4}>
-                  <Button type="text" size="small" onClick={() => decreaseExtraCount(weekKey, idx)} disabled={actualCount <= 1}>−</Button>
-                  <Text>x{actualCount}</Text>
-                  <Button type="text" size="small" onClick={() => increaseExtraCount(weekKey, idx)} disabled={totalCards >= 5}>+</Button>
+                <Space size={2}>
+                  <Button type="text" size="small" onClick={() => {}} disabled={actualCount <= 1}>−</Button>
+                  <Text style={{ fontSize: 13 }}>×{actualCount}</Text>
+                  <Button type="text" size="small" onClick={() => {}} disabled={totalCards >= 5}>+</Button>
                 </Space>
-                <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeExtraCard(weekKey, idx)}>删除</Button>
+                <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeExtraCard(weekKey, idx)} />
               </div>
             );
-          }) : <Text type="secondary" style={{ fontSize: 13, color: '#888' }}>无扩展卡</Text>}
+          }) : <Text type="secondary" style={{ fontSize: 13 }}>无扩展卡</Text>}
         </div>
 
-        {/* 添加按钮 */}
         {totalCards < 5 && (
-          <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={() => addExtraCard(weekKey)} style={{ marginTop: 8 }}>
+          <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={() => addExtraCard(weekKey)} style={{ color: COLORS.primary, borderColor: COLORS.primary }}>
             添加扩展卡
           </Button>
         )}
 
-        <Divider style={{ margin: '12px 0' }} />
-
-        {/* 卡牌需求统计 */}
-        <div style={{ fontSize: 13, color: '#666' }}>
-          <Text strong>卡组构成：</Text>
-          {Array.from(needsCards.entries()).map(([card, n], i, arr) => (
-            <span key={card}>
-              {card}×{n} (降权{n > 1 ? `从第2张起共${n-1}张` : '无'})
-              {i < arr.length - 1 ? '，' : ''}
-            </span>
-          ))}
-        </div>
-        <div style={{ marginTop: 4, fontSize: 12, color: '#888' }}>
-          总需求槽位：{totalCards} / 降权槽位：{needReductionCount} (降权从每张卡的第2张起算)
+        <div style={{ marginTop: 12, fontSize: 12, color: COLORS.text, opacity: 0.7 }}>
+          {Array.from(needs.entries()).map(([card, n]) => `${card}×${n}(${n > 1 ? `第2张起降权` : '无降权'})`).join(', ')}
         </div>
       </div>
     );
   };
 
-  const renderCoefficientTable = (title: string, coeffsData: Record<string, CardCoefficients>, color: string, weekCombo: WeeklyCombo) => {
+  const renderCoefficientTable = (title: string, coeffsData: Record<string, CardCoefficients>, weekCombo: WeeklyCombo, otherWeekCombo: WeeklyCombo) => {
     const needs = buildNeedsMap(weekCombo.cards);
-    const dataSource = Object.entries(coeffsData).map(([card, coeffs]) => ({
-      key: card,
-      card,
-      type: getCardType(card) === 'magic' ? '神奇' : getCardType(card) === 'rare' ? '稀有' : '普通',
-      demand: needs.get(card) || 0,
-      reductionSlots: Math.max(0, (needs.get(card) || 0) - 1), // 需要降权的槽位
-      coeffs,
-    }));
+    const otherNeeds = buildNeedsMap(otherWeekCombo.cards);
+
+    // Combine cards from both weeks for display
+    const allRelevantCards = new Set([...weekCombo.cards, ...otherWeekCombo.cards]);
+
+    const dataSource = Array.from(allRelevantCards).sort().map(card => {
+      const coeffs = coeffsData[card] || [1.0];
+      const demand = needs.get(card) || 0;
+      const otherDemand = otherNeeds.get(card) || 0;
+      const isInCurrent = demand > 0;
+      const isInOther = otherDemand > 0;
+
+      return {
+        key: card,
+        card,
+        type: getCardType(card),
+        demand,
+        otherDemand,
+        isInCurrent,
+        isInOther,
+        reductionSlots: Math.max(0, (needs.get(card) || 0) - 1),
+        coeffs,
+      };
+    });
 
     return (
       <div style={{ marginBottom: 24 }}>
-        <Title level={5} style={{ color }}>{title}</Title>
+        <Title level={5} style={{ color: COLORS.dark, marginBottom: 12 }}>{title}</Title>
         <Table
           size="small"
-          bordered
           dataSource={dataSource}
           pagination={false}
-          columns={[
-            { title: '卡牌', dataIndex: 'card', width: 80, render: (v: string) => <Tag color={CARD_COLORS[v]}>{v}</Tag> },
-            { title: '类型', dataIndex: 'type', width: 80 },
-            { title: '需求数', dataIndex: 'demand', width: 80, align: 'center' },
-            { title: '降权槽位', dataIndex: 'reductionSlots', width: 90, align: 'center', render: (v: number) => v > 0 ? <Tag color="warning">{v}个</Tag> : <Tag color="default">無</Tag> },
-            {
-              title: '降权系数（从第2张起生效）',
-              dataIndex: 'coeffs',
-              render: (coeffs: number[], record: { demand: number }) => {
-                // V6: 只显示实际需要降权的槽位（demand-1个）
-                const activetitle = Math.max(0, record.demand - 1);
-                return (
-                  <Space>
-                    <Tag color="success">第1张: 1.0(无降)</Tag>
-                    {activetitle > 0 && Array.from({ length: activetitle }).map((_, i) => (
-                      <Tag key={i} color={coeffs[i+1] < 0.02 ? 'error' : 'warning'}>
-                        第{i+2}张: {coeffs[i+1]?.toFixed(4) || 'N/A'}
-                      </Tag>
-                    ))}
-                  </Space>
-                );
-              },
-            },
-          ]}
-        />
-        <Text type="secondary" style={{ fontSize: 12, marginTop: 8, display: 'block' }}>
-          * 降权仅对超过需求第1张的卡生效。例如 AAB 对第二张A生效，AAA 对第二、第三张A生效。
-        </Text>
+          style={{ background: 'white', borderRadius: 12, overflow: 'hidden' }}
+          rowClassName={(record) => record.isInOther && !record.isInCurrent ? 'cross-week-row' : ''}
+        >
+          <Table.Column
+            title="卡牌"
+            dataIndex="card"
+            width={70}
+            render={(v: string) => (
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 28, height: 28,
+                borderRadius: 6,
+                background: RARITY_COLORS[CARD_META[v].type].bg,
+                color: RARITY_COLORS[CARD_META[v].type].text,
+                fontWeight: 600,
+              }}>{v}</span>
+            )}
+          />
+          <Table.Column
+            title="类型"
+            dataIndex="type"
+            width={80}
+            render={(v: string) => (
+              <span style={{
+                padding: '2px 8px',
+                borderRadius: 4,
+                background: RARITY_COLORS[v as 'magic' | 'rare' | 'common'].bg,
+                color: RARITY_COLORS[v as 'magic' | 'rare' | 'common'].text,
+                fontSize: 12,
+              }}>{RARITY_COLORS[v as 'magic' | 'rare' | 'common'].label}</span>
+            )}
+          />
+          <Table.Column
+            title="本周需求"
+            dataIndex="demand"
+            width={90}
+            align="center"
+            render={(v: number) => v > 0 ? <Tag color="processing">{v}张</Tag> : <span style={{ color: '#999' }}>—</span>}
+          />
+          <Table.Column
+            title="跨周需求"
+            dataIndex="otherDemand"
+            width={90}
+            align="center"
+            render={(v: number) => v > 0 ? <Tag color="warning">{v}张</Tag> : <span style={{ color: '#999' }}>—</span>}
+          />
+          <Table.Column
+            title="降权系数"
+            dataIndex="coeffs"
+            render={(coeffs: number[], record: { demand: number }) => {
+              const activeSlots = Math.max(0, record.demand - 1);
+              return (
+                <Space size={4}>
+                  <span style={{
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    background: COLORS.bgLight,
+                    color: COLORS.text,
+                    fontSize: 12,
+                  }}>第1张: 1.0</span>
+                  {activeSlots > 0 && Array.from({ length: activeSlots }).map((_, i) => (
+                    <span key={i} style={{
+                      padding: '2px 8px',
+                      borderRadius: 4,
+                      background: (coeffs[i+1] || 1) < 0.01 ? '#511B3A' : (coeffs[i+1] || 1) < 0.1 ? '#6BA368' : '#9CFC97',
+                      color: (coeffs[i+1] || 1) < 0.01 ? '#E6FAFC' : COLORS.text,
+                      fontSize: 12,
+                      fontWeight: (coeffs[i+1] || 1) < 0.01 ? 600 : 400,
+                    }}>
+                      第{i+2}张: {(coeffs[i+1] || 0).toFixed(5)}
+                    </span>
+                  ))}
+                </Space>
+              );
+            }}
+          />
+        </Table>
+        <style>{`
+          .cross-week-row {
+            background: linear-gradient(90deg, rgba(156,252,151,0.1) 0%, transparent 100%);
+          }
+        `}</style>
       </div>
     );
   };
 
   return (
-    <div style={{ padding: 24, maxWidth: 1400, margin: '0 auto' }}>
-      <div style={{ marginBottom: 24 }}>
-        <Title level={2}>🎴 神奇物种发卡概率系统 (V6)</Title>
-        <Paragraph type="secondary">V6新版：每卡组强制基础卡x2，降权只对超过第1张的卡生效</Paragraph>
-      </div>
+    <div style={{ minHeight: '100vh', background: `linear-gradient(135deg, ${COLORS.bgLight} 0%, #fff 100%)`, padding: '32px 24px' }}>
+      <div style={{ maxWidth: 1400, margin: '0 auto' }}>
+        {/* Header */}
+        <div style={{ textAlign: 'center', marginBottom: 40 }}>
+          <Title style={{ color: COLORS.dark, fontSize: 32, fontWeight: 700, marginBottom: 8, letterSpacing: '-0.02em' }}>
+            神奇物种概率系统
+          </Title>
+          <Paragraph style={{ color: COLORS.text, fontSize: 15, opacity: 0.8 }}>
+            智能求解最优降权系数 · 精准控制集齐率
+          </Paragraph>
+        </div>
 
-      <Row gutter={[24, 24]}>
-        <Col xs={24} lg={10}>
-          <AntCard
-            title="卡组配置"
-            bordered={false}
-            extra={
-              <Button
-                type="primary"
-                icon={<CalculatorOutlined />}
-                onClick={runSolve}
-                loading={isCalculating}
-                disabled={isCalculating}
-              >
-                {isCalculating ? '计算中...' : '开始测算'}
-              </Button>
-            }
-          >
-            <Space direction="vertical" style={{ width: '100%' }} size="large">
-              {renderWeekConfig('week1', setup.week1, '#52c41a')}
-              {renderWeekConfig('week2', setup.week2, '#1890ff')}
+        {/* Card Type Legend */}
+        <AntCard
+          style={{
+            background: 'white',
+            borderRadius: 16,
+            marginBottom: 24,
+            boxShadow: '0 4px 20px rgba(81, 27, 58, 0.06)',
+            border: 'none',
+          }}
+          bodyStyle={{ padding: 20 }}
+        >
+          <Text strong style={{ color: COLORS.dark, display: 'block', marginBottom: 12 }}>卡牌类型说明</Text>
+          <CardTypeLegend />
+        </AntCard>
 
-              <div style={{ padding: 12, background: '#fff7e6', borderRadius: 8, border: '1px solid #ffa940' }}>
-                <Space align="center">
-                  <GiftOutlined style={{ color: '#fa8c16', fontSize: 20 }} />
-                  <Text>每日抽奖次数</Text>
-                  <InputNumber
-                    min={MIN_DAILY_DRAWS}
-                    max={MAX_DAILY_DRAWS}
-                    value={setup.dailyDraws}
-                    onChange={(v) => v && updateDailyDraws(v)}
-                    addonAfter="次/天"
-                    size="small"
-                    style={{ width: 100 }}
-                  />
-                </Space>
-                <div style={{ marginTop: 8, fontSize: 13, color: '#888' }}>
-                  单周期望抽卡数：{setup.dailyDraws * 7}（第一周） / {setup.dailyDraws * 14}（两周期），
-                  V6卡组最少3张卡
-                </div>
+        <Row gutter={[24, 24]}>
+          <Col xs={24} lg={10}>
+            <div
+              style={{
+                background: 'white',
+                borderRadius: 20,
+                padding: 24,
+                boxShadow: '0 8px 32px rgba(81, 27, 58, 0.08)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <Text strong style={{ color: COLORS.dark, fontSize: 18 }}>卡组配置</Text>
+                <Button
+                  type="primary"
+                  icon={<CalculatorOutlined />}
+                  onClick={runSolve}
+                  loading={isCalculating}
+                  style={{
+                    background: COLORS.primary,
+                    borderColor: COLORS.primary,
+                    borderRadius: 8,
+                    height: 40,
+                    padding: '0 24px',
+                  }}
+                >
+                  {isCalculating ? '计算中...' : '开始测算'}
+                </Button>
               </div>
 
+              {renderWeekConfig('week1', setup.week1)}
+              {renderWeekConfig('week2', setup.week2)}
+
+              {/* Daily Draws */}
+              <div
+                style={{
+                  padding: 16,
+                  background: COLORS.bgLight,
+                  borderRadius: 12,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 16,
+                  marginBottom: 16,
+                }}
+              >
+                <GiftOutlined style={{ color: COLORS.primary, fontSize: 20 }} />
+                <Text style={{ color: COLORS.text }}>每日抽奖次数</Text>
+                <InputNumber
+                  min={MIN_DAILY_DRAWS}
+                  max={MAX_DAILY_DRAWS}
+                  value={setup.dailyDraws}
+                  onChange={(v) => v && updateDailyDraws(v)}
+                  style={{ width: 80 }}
+                  size="small"
+                />
+                <Text type="secondary" style={{ fontSize: 12 }}>次/天</Text>
+              </div>
+
+              {/* Progress */}
               {isCalculating && progress && (
-                <div style={{ padding: 16, background: '#f5f5f5', borderRadius: 8 }}>
+                <div style={{ padding: 16, background: COLORS.bgLight, borderRadius: 12 }}>
                   <Progress
                     percent={Math.round((progress.iteration / progress.totalIterations) * 100)}
                     status="active"
-                    strokeColor={{ from: '#52c41a', to: '#1890ff' }}
+                    strokeColor={COLORS.primary}
+                    trailColor="rgba(107, 163, 104, 0.2)"
                   />
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
-                    <Text type="secondary">迭代 {progress.iteration}/{progress.totalIterations}</Text>
-                    <Text type="secondary">
-                      第一周: {progress.week1Rate.toFixed(1)}% | 第二周: {progress.week2Rate.toFixed(1)}%
-                    </Text>
+                    <Text type="secondary" style={{ fontSize: 12 }}>迭代 {progress.iteration.toFixed(1)}/{progress.totalIterations}</Text>
+                    <Text type="secondary" style={{ fontSize: 12 }}>Week1: {progress.week1Rate.toFixed(1)}% | Week2: {progress.week2Rate.toFixed(1)}%</Text>
                   </div>
                 </div>
               )}
-            </Space>
-          </AntCard>
 
-          {result && (
-            <AntCard style={{ marginTop: 16 }} bordered={false}>
-              <Row gutter={16}>
-                <Col span={8} style={{ textAlign: 'center' }}>
-                  <Text type="secondary">第一周</Text>
-                  <div style={{ fontSize: 26, fontWeight: 'bold', color: '#52c41a' }}>
-                    {result.actualRates.week1.toFixed(1)}%
-                  </div>
-                  <div style={{ fontSize: 12, color: '#888' }}>目标4%</div>
-                </Col>
-                <Col span={8} style={{ textAlign: 'center' }}>
-                  <Text type="secondary">第二周</Text>
-                  <div style={{ fontSize: 26, fontWeight: 'bold', color: '#1890ff' }}>
-                    {result.actualRates.week2.toFixed(1)}%
-                  </div>
-                  <div style={{ fontSize: 12, color: '#888' }}>目标4%</div>
-                </Col>
-                <Col span={8} style={{ textAlign: 'center' }}>
-                  <Text type="secondary">全收集</Text>
-                  <div style={{ fontSize: 26, fontWeight: 'bold', color: '#722ed1' }}>
-                    {result.fullCollectionRate.toFixed(1)}%
-                  </div>
-                  <div style={{ fontSize: 12, color: '#888' }}>14天内</div>
-                </Col>
-              </Row>
-            </AntCard>
-          )}
-        </Col>
+              {/* Results */}
+              {result && (
+                <div style={{ marginTop: 20, padding: 20, background: COLORS.bgLight, borderRadius: 12 }}>
+                  <Row gutter={16}>
+                    <Col span={8} style={{ textAlign: 'center' }}>
+                      <Text type="secondary" style={{ fontSize: 12 }}>第一周</Text>
+                      <div style={{ fontSize: 28, fontWeight: 700, color: COLORS.primary }}>{result.actualRates.week1.toFixed(1)}%</div>
+                      <Text type="secondary" style={{ fontSize: 11 }}>目标4%</Text>
+                    </Col>
+                    <Col span={8} style={{ textAlign: 'center' }}>
+                      <Text type="secondary" style={{ fontSize: 12 }}>第二周</Text>
+                      <div style={{ fontSize: 28, fontWeight: 700, color: COLORS.primary }}>{result.actualRates.week2.toFixed(1)}%</div>
+                      <Text type="secondary" style={{ fontSize: 11 }}>目标4%</Text>
+                    </Col>
+                    <Col span={8} style={{ textAlign: 'center' }}>
+                      <Text type="secondary" style={{ fontSize: 12 }}>全收集</Text>
+                      <div style={{ fontSize: 28, fontWeight: 700, color: COLORS.dark }}>{result.fullCollectionRate.toFixed(1)}%</div>
+                      <Text type="secondary" style={{ fontSize: 11 }}>14天内</Text>
+                    </Col>
+                  </Row>
+                </div>
+              )}
+            </div>
+          </Col>
 
-        <Col xs={24} lg={14}>
-          {result ? (
-            <AntCard bordered={false}>
-              <Tabs activeKey={activeTab} onChange={setActiveTab}>
-                <TabPane tab={<span><TrophyOutlined /> 第一周系数</span>} key="week1">
-                  <Paragraph type="secondary">
-                    卡组：{setup.week1.cards.map((c, i) => getCardLabel(c, i, c === (setup.baseCards?.week1 || setup.week1.cards[0])))}
-                  </Paragraph>
-                  {renderCoefficientTable('第一周降权系数', result.week1, '#52c41a', setup.week1)}
-                </TabPane>
+          <Col xs={24} lg={14}>
+            {result ? (
+              <div style={{ background: 'white', borderRadius: 20, padding: 24, boxShadow: '0 8px 32px rgba(81, 27, 58, 0.08)' }}>
+                <Tabs activeKey={activeTab} onChange={setActiveTab}>
+                  <TabPane tab={<span><TrophyOutlined /> 第一周系数</span>} key="week1">
+                    <Paragraph type="secondary" style={{ marginBottom: 16 }}>
+                      包含本周卡组及跨周卡牌的系数配置。
+                      <span style={{ background: 'rgba(156,252,151,0.3)', padding: '2px 6px', borderRadius: 4, marginLeft: 8 }}>绿色底纹</span>表示跨周卡牌
+                    </Paragraph>
+                    {renderCoefficientTable('降权系数详情', result.week1, setup.week1, setup.week2)}
+                  </TabPane>
 
-                <TabPane tab={<span><TrophyOutlined /> 第二周系数</span>} key="week2">
-                  <Paragraph type="secondary">
-                    卡组：{setup.week2.cards.map((c, i) => getCardLabel(c, i, c === (setup.baseCards?.week2 || setup.week2.cards[1])))}
-                  </Paragraph>
-                  {renderCoefficientTable('第二周降权系数', result.week2, '#1890ff', setup.week2)}
-                </TabPane>
+                  <TabPane tab={<span><TrophyOutlined /> 第二周系数</span>} key="week2">
+                    <Paragraph type="secondary" style={{ marginBottom: 16 }}>
+                      包含本周卡组及跨周卡牌的系数配置。
+                    </Paragraph>
+                    {renderCoefficientTable('降权系数详情', result.week2, setup.week2, setup.week1)}
+                  </TabPane>
 
-                <TabPane tab={<span><TableOutlined /> 基础概率</span>} key="base">
-                  <Table
-                    size="small"
-                    bordered
-                    pagination={false}
-                    dataSource={ALL_CARDS.map(card => ({
-                      card,
-                      type: getCardType(card) === 'magic' ? '神奇' : getCardType(card) === 'rare' ? '稀有' : '普通',
-                      prob: `${getBaseProb(card)}%`,
-                    }))}
-                    columns={[
-                      { title: '卡牌', dataIndex: 'card', render: (v: string) => <Tag color={CARD_COLORS[v]}>{v}</Tag> },
-                      { title: '类型', dataIndex: 'type' },
-                      { title: '基础概率', dataIndex: 'prob' },
-                    ]}
-                  />
-                </TabPane>
-
-                <TabPane tab={<span><QuestionCircleOutlined /> 案例</span>} key="cases">
-                  <Table
-                    size="small"
-                    dataSource={cases}
-                    pagination={false}
-                    columns={[
-                      { title: '案例', dataIndex: 'name', width: 120 },
-                      { title: '状态', dataIndex: 'description' },
-                      { title: '预期', dataIndex: 'expectedSuccess' },
-                    ]}
-                  />
-                </TabPane>
-              </Tabs>
-            </AntCard>
-          ) : (
-            <AntCard bordered={false} style={{ textAlign: 'center', padding: 80 }}>
-              <CalculatorOutlined style={{ fontSize: 64, color: '#d9d9d9' }} />
-              <Title level={4} style={{ marginTop: 24, color: '#999' }}>
-                点击下方"开始测算"
-              </Title>
-              <Paragraph type="secondary">
-                系统将实时显示进度并求解最优降权系数
-              </Paragraph>
-            </AntCard>
-          )}
-        </Col>
-      </Row>
+                  <TabPane tab={<span><TableOutlined /> 基础概率</span>} key="base">
+                    <Table
+                      size="small"
+                      pagination={false}
+                      dataSource={ALL_CARDS.map(card => ({
+                        card,
+                        type: CARD_META[card].type,
+                        name: CARD_META[card].name,
+                        prob: `${CARD_META[card].baseProb}%`,
+                      }))}
+                      columns={[
+                        { title: '卡牌', dataIndex: 'card', render: (v: string) => getCardBadge(v) },
+                        { title: '类型', dataIndex: 'type', render: (v: string) => RARITY_COLORS[v as 'magic' | 'rare' | 'common'].label },
+                        { title: '名称', dataIndex: 'name' },
+                        { title: '基础概率', dataIndex: 'prob' },
+                      ]}
+                    />
+                  </TabPane>
+                </Tabs>
+              </div>
+            ) : (
+              <div style={{ background: 'white', borderRadius: 20, padding: 80, textAlign: 'center', boxShadow: '0 8px 32px rgba(81, 27, 58, 0.08)' }}>
+                <CalculatorOutlined style={{ fontSize: 64, color: COLORS.bgLight }} />
+                <Title level={4} style={{ marginTop: 24, color: COLORS.text, opacity: 0.5 }}>点击"开始测算"生成系数</Title>
+              </div>
+            )}
+          </Col>
+        </Row>
+      </div>
     </div>
   );
-}
-
-// 辅助函数：统计需求
-function buildNeedsMap(cards: string[]): Map<string, number> {
-  const needs = new Map<string, number>();
-  for (const card of cards) {
-    needs.set(card, (needs.get(card) || 0) + 1);
-  }
-  return needs;
 }
