@@ -34,40 +34,6 @@ const DEFAULT_SETUP: CardSetup = {
   dailyDraws: 4,
 };
 
-// 顶部导航栏
-function TopNav({ onNavigateToConfig, title }: { onNavigateToConfig?: () => void; title: string }) {
-  return (
-    <div style={{
-      background: PALETTE.surface,
-      borderBottom: `1px solid ${PALETTE.border}`,
-      padding: '16px 24px',
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    }}>
-      <div style={{ fontSize: 18, fontWeight: 600, color: PALETTE.text, fontFamily: FONT_DISPLAY }}>
-        {title}
-      </div>
-      <div style={{ display: 'flex', gap: 16 }}>
-        <button
-          onClick={onNavigateToConfig}
-          style={{
-            color: PALETTE.textMuted,
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            fontFamily: FONT_DISPLAY,
-            fontSize: 14,
-            padding: '8px 16px',
-          }}
-        >
-          使用教程
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // 配置难度指示器
 function ConfigBalanceBar({ setup }: { setup: CardSetup }) {
   const analysis = useMemo(() => {
@@ -327,9 +293,6 @@ export function CardSelectionPage({ onNavigateToConfig }: { onNavigateToConfig?:
 
   return (
     <div style={{ minHeight: '100vh', background: PALETTE.bg, fontFamily: FONT_DISPLAY }}>
-      {/* 顶部导航栏 */}
-      <TopNav onNavigateToConfig={onNavigateToConfig} title="概率系数调控系统" />
-
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px 48px' }}>
 
         {/* 标题区 */}
@@ -340,6 +303,7 @@ export function CardSelectionPage({ onNavigateToConfig }: { onNavigateToConfig?:
           <p style={{ margin: '12px 0 0', fontSize: 15, color: PALETTE.textMuted, fontFamily: FONT_DISPLAY }}>
             目标完成率 4% · 精准控制集齐概率
           </p>
+          <button onClick={onNavigateToConfig} style={{ marginTop: 16, color: PALETTE.accent, background: 'none', border: 'none', cursor: 'pointer', fontFamily: FONT_DISPLAY, fontSize: 14, textDecoration: 'underline' }}>查看使用教程</button>
         </div>
 
         <ConfigBalanceBar setup={setup} />
