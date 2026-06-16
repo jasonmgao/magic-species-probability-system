@@ -180,10 +180,14 @@ async function simulateWeek(
   const deadline = weekCombo.deadline;
 
   // 构建完整的系数对象
-  const fullCoeffs = {
-    week1: isWeek1 ? coefficients : (fixedWeek1Coeffs || {}),
-    week2: !isWeek1 ? coefficients : {},
-  };
+  // 🐛 SAFETY FIX: 使用全量默认系数兜底
+  const defaultAllCoeffs: Record<string, CardCoefficients> = {};
+  for (const c of ALL_CARDS) defaultAllCoeffs[c] = [1.0];
+
+  const w1Actual = isWeek1 ? coefficients : (fixedWeek1Coeffs || defaultAllCoeffs);
+  const w2Actual = !isWeek1 ? coefficients : defaultAllCoeffs;
+
+  const fullCoeffs = { week1: w1Actual, week2: w2Actual };
 
   let completed = 0;
   const allCards = new Set([...setup.week1.cards, ...setup.week2.cards]);
@@ -533,6 +537,17 @@ async function simulateBothWeeks(
   let w1 = 0, w2 = 0, fc = 0;
   const allCards = new Set([...setup.week1.cards, ...setup.week2.cards]);
 
+  // 🐛 SAFETY: Pad missing cards with default coefficient [1.0]
+  const padCoeffs = (coeffs: Record<string, CardCoefficients>) => {
+    const result = { ...coeffs };
+    for (const c of ALL_CARDS) {
+      if (!result[c]) result[c] = [1.0];
+    }
+    return result;
+  };
+  const safeW1Coeffs = padCoeffs(w1Coeffs);
+  const safeW2Coeffs = padCoeffs(w2Coeffs);
+
   // 分块执行，每500次让出一次主线程
   const chunkSize = 500;
   const chunks = Math.ceil(trials / chunkSize);
@@ -550,7 +565,7 @@ async function simulateBothWeeks(
         const dt = sched1[d - 1];
         const lc = getLuckyCard(dt, allCards, lucky1);
         for (let i = 0; i < 4; i++) {
-          const c = drawOneCard(bag1, setup, { week1: w1Coeffs, week2: w2Coeffs }, d, dt, lc);
+          const c = drawOneCard(bag1, setup, { week1: safeW1Coeffs, week2: safeW2Coeffs }, d, dt, lc);
           bag1[c] = (bag1[c] || 0) + 1;
         }
       }
@@ -564,7 +579,7 @@ async function simulateBothWeeks(
         const dt = sched2[d - 1];
         const lc = getLuckyCard(dt, allCards, d <= 7 ? lucky2a : lucky2b);
         for (let i = 0; i < 4; i++) {
-          const c = drawOneCard(bag2, setup, { week1: w1Coeffs, week2: w2Coeffs }, d, dt, lc);
+          const c = drawOneCard(bag2, setup, { week1: safeW1Coeffs, week2: safeW2Coeffs }, d, dt, lc);
           bag2[c] = (bag2[c] || 0) + 1;
         }
       }
