@@ -278,23 +278,12 @@ function drawOneCard(
   const currentCoeffs = isWeek1 ? coefficients.week1 : coefficients.week2;
 
   // 基础概率
-  // ⚠️ 重要修改：幸运卡的概率也要受降权系数影响！
-  // 否则幸运卡会绕过降权机制，导致完成率无法控制
+  // 🎯 新策略：降权优先级高于幸运卡！
+  // 所有卡一视同仁，先按基础概率计算
   const rawProbs: Record<string, number> = {};
-  const otherCards = ALL_CARDS.filter(c => c !== luckyCard);
-  const otherTotal = otherCards.reduce((sum, c) => sum + getBaseProb(c), 0);
 
   for (const card of ALL_CARDS) {
-    const baseProb = getBaseProb(card);
-    if (luckyCard === card) {
-      // 幸运卡的基础概率也受降权影响（关键修复！）
-      // 先给1.2%，但后面会乘以系数
-      rawProbs[card] = LUCKY_FIXED_PROB;
-    } else if (luckyCard !== null) {
-      rawProbs[card] = (baseProb / otherTotal) * (100 - LUCKY_FIXED_PROB);
-    } else {
-      rawProbs[card] = baseProb;
-    }
+    rawProbs[card] = getBaseProb(card);
   }
 
   // 应用降权
