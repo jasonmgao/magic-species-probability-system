@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
-import { Row, Col, Button, message, Progress, Table, Tag, Select, InputNumber } from 'antd';
+import { Row, Col, message, Progress, Table, Tag, Select, InputNumber } from 'antd';
 import type { CardSetup, WeeklyCombo, CoefficientResult, SolverProgress, CardCoefficients } from '@/types';
 import { runSimulation, ALL_CARDS } from '@/services/simulationEngine';
 
@@ -26,13 +26,47 @@ const CARD_META: Record<string, { type: 'magic' | 'rare' | 'common'; prob: numbe
   I: { type: 'common', prob: 14 }, J: { type: 'common', prob: 14 },
 };
 
-const TYPE_LABELS = { magic: '神奇', rare: '稀有', common: '普通' };
+const TYPE_LABELS: Record<string, string> = { magic: '神奇', rare: '稀有', common: '普通' };
 
 const DEFAULT_SETUP: CardSetup = {
   week1: { name: '第一周', cards: ['A', 'A', 'B'], deadline: 7 },
   week2: { name: '第二周', cards: ['C', 'D', 'E'], deadline: 14 },
   dailyDraws: 4,
 };
+
+// 顶部导航栏
+function TopNav({ onNavigateToConfig, title }: { onNavigateToConfig?: () => void; title: string }) {
+  return (
+    <div style={{
+      background: PALETTE.surface,
+      borderBottom: `1px solid ${PALETTE.border}`,
+      padding: '16px 24px',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    }}>
+      <div style={{ fontSize: 18, fontWeight: 600, color: PALETTE.text, fontFamily: FONT_DISPLAY }}>
+        {title}
+      </div>
+      <div style={{ display: 'flex', gap: 16 }}>
+        <button
+          onClick={onNavigateToConfig}
+          style={{
+            color: PALETTE.textMuted,
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            fontFamily: FONT_DISPLAY,
+            fontSize: 14,
+            padding: '8px 16px',
+          }}
+        >
+          使用教程
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // 配置难度指示器
 function ConfigBalanceBar({ setup }: { setup: CardSetup }) {
@@ -53,7 +87,7 @@ function ConfigBalanceBar({ setup }: { setup: CardSetup }) {
     else if (score < 40) { label = '容易'; color = '#6b8e6b'; }
     else if (score > 70) { label = '困难'; color = PALETTE.accent; }
     else if (score > 55) { label = '偏难'; color = '#8b5a6b'; }
-    return { score, label, color, details: `${w1Cards}+${w2Cards}张 · ${totalUnique}种` };
+    return { score, label, color, details: `${w1Cards}张+${w2Cards}张 · ${totalUnique}种` };
   }, [setup]);
 
   return (
@@ -64,7 +98,9 @@ function ConfigBalanceBar({ setup }: { setup: CardSetup }) {
           <div style={{ fontSize: 13, color: PALETTE.textMuted, marginTop: 2, fontFamily: FONT_DISPLAY }}>{analysis.details}</div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <span style={{ fontSize: 32, fontWeight: 600, color: analysis.color, fontFamily: FONT_DISPLAY }}>{analysis.score}</span>
+          <span style={{ fontSize: 32, fontWeight: 600, color: analysis.color, fontFamily: FONT_DISPLAY }}>
+            {analysis.score}
+          </span>
           <span style={{ fontSize: 12, color: PALETTE.textMuted, marginLeft: 4, fontFamily: FONT_DISPLAY }}>/ 一百</span>
         </div>
       </div>
@@ -138,9 +174,29 @@ function WeekPanel({ title, subtitle, weekKey, combo, setup, onChange }: { title
       </div>
 
       <div style={{ padding: 20 }}>
+        {/* 当前卡组明细 */}
+        <div style={{ marginBottom: 16, padding: '12px 16px', background: PALETTE.bg, borderRadius: 4 }}>
+          <span style={{ fontSize: 11, color: PALETTE.textMuted, opacity: 0.7, letterSpacing: '0.1em', display: 'block', marginBottom: 8, fontFamily: FONT_DISPLAY }}>当前卡组明细</span>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {combo.cards.map((card, idx) => (
+              <span key={idx} style={{
+                padding: '2px 8px',
+                background: PALETTE.surface,
+                borderRadius: 3,
+                fontSize: 13,
+                fontFamily: FONT_MONO,
+                color: idx < 2 ? PALETTE.accent : PALETTE.text,
+                border: `1px solid ${idx < 2 ? PALETTE.accent : PALETTE.border}`
+              }}>
+                {card} {idx < 2 && <span style={{ fontSize: 10, opacity: 0.6 }}>(基)</span>}
+              </span>
+            ))}
+          </div>
+        </div>
+
         {/* 基础卡 */}
         <div style={{ marginBottom: 20 }}>
-          <span style={{ fontSize: 11, color: PALETTE.textMuted, opacity: 0.7, letterSpacing: '0.1em', display: 'block', marginBottom: 8, fontFamily: FONT_DISPLAY }}>基础卡牌</span>
+          <span style={{ fontSize: 11, color: PALETTE.textMuted, opacity: 0.7, letterSpacing: '0.1em', display: 'block', marginBottom: 8, fontFamily: FONT_DISPLAY }}>基础卡牌（固定×2）</span>
           <Select value={baseCard} onChange={setBase} style={{ width: '100%' }} size="large" bordered={false}>
             {ALL_CARDS.map(c => (
               <Option key={c} value={c}>
@@ -187,8 +243,9 @@ function WeekPanel({ title, subtitle, weekKey, combo, setup, onChange }: { title
           )}
         </div>
 
-        {/* 汇总 */}
+        {/* 汇总统计 */}
         <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px dashed ${PALETTE.border}` }}>
+          <span style={{ fontSize: 11, color: PALETTE.textMuted, opacity: 0.7, letterSpacing: '0.1em', display: 'block', marginBottom: 8, fontFamily: FONT_DISPLAY }}>卡牌统计</span>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {Array.from(needs.entries()).map(([card, count]) => (
               <CardToken key={card} card={card} count={count} isActive={count > 1} />
@@ -254,7 +311,7 @@ export function CardSelectionPage({ onNavigateToConfig }: { onNavigateToConfig?:
     return (
       <Table size="small" dataSource={data} pagination={false} style={{ fontSize: 13 }} columns={[
         { title: '卡牌', dataIndex: 'card', width: 60, render: (v: string) => <span style={{ fontWeight: 600, color: CARD_META[v].type === 'magic' ? PALETTE.accent : CARD_META[v].type === 'rare' ? PALETTE.success : PALETTE.textMuted, fontFamily: FONT_MONO }}>{v}</span> },
-        { title: '类型', dataIndex: 'type', width: 70, render: (v: string) => <span style={{ fontFamily: FONT_DISPLAY }}>{TYPE_LABELS[v as 'magic'|'rare'|'common']}</span> },
+        { title: '类型', dataIndex: 'type', width: 70, render: (v: string) => <span style={{ fontFamily: FONT_DISPLAY }}>{TYPE_LABELS[v]}</span> },
         { title: '本周需求', dataIndex: 'demand', width: 90, align: 'right' as const, render: (v: number) => v > 0 ? <span style={{ fontFamily: FONT_MONO }}>{v}</span> : <span style={{ color: PALETTE.textMuted, fontFamily: FONT_DISPLAY }}>—</span> },
         { title: '跨周需求', dataIndex: 'otherDemand', width: 90, align: 'right' as const, render: (v: number, record: any) => v > 0 ? <span style={{ color: record.hasReduction ? PALETTE.accent : PALETTE.textMuted, fontFamily: FONT_MONO }}>{v}</span> : <span style={{ color: PALETTE.textMuted, fontFamily: FONT_DISPLAY }}>—</span> },
         { title: '降权系数', dataIndex: 'coeffs', render: (c: number[], record: any) => (
@@ -270,20 +327,21 @@ export function CardSelectionPage({ onNavigateToConfig }: { onNavigateToConfig?:
 
   return (
     <div style={{ minHeight: '100vh', background: PALETTE.bg, fontFamily: FONT_DISPLAY }}>
-      {/* 居中标题区 */}
-      <div style={{ padding: '48px 24px 32px', textAlign: 'center' }}>
-        <button onClick={onNavigateToConfig} style={{ position: 'absolute', left: 24, top: 48, color: PALETTE.textMuted, background: 'none', border: 'none', cursor: 'pointer', fontFamily: FONT_DISPLAY, fontSize: 14 }}>《 使用教程</button>
-        <div style={{ display: 'inline-block', padding: '0 32px 16px', borderBottom: `2px solid ${PALETTE.accent}` }}>
-          <h1 style={{ margin: 0, fontSize: 36, fontWeight: 700, color: PALETTE.text, letterSpacing: '0.08em', fontFamily: FONT_DISPLAY }}>
-            概率系数调控系统
-          </h1>
-        </div>
-        <p style={{ margin: '16px 0 0', fontSize: 15, color: PALETTE.textMuted, fontFamily: FONT_DISPLAY }}>
-          蒙特卡洛模拟求解最优降权系数 · 目标完成率 4%
-        </p>
-      </div>
+      {/* 顶部导航栏 */}
+      <TopNav onNavigateToConfig={onNavigateToConfig} title="概率系数调控系统" />
 
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px 48px' }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px 48px' }}>
+
+        {/* 标题区 */}
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+          <h1 style={{ margin: 0, fontSize: 32, fontWeight: 700, color: PALETTE.text, letterSpacing: '0.08em', fontFamily: FONT_DISPLAY }}>
+            蒙特卡洛模拟求解最优降权系数
+          </h1>
+          <p style={{ margin: '12px 0 0', fontSize: 15, color: PALETTE.textMuted, fontFamily: FONT_DISPLAY }}>
+            目标完成率 4% · 精准控制集齐概率
+          </p>
+        </div>
+
         <ConfigBalanceBar setup={setup} />
 
         {/* 周配置并排 */}
@@ -308,8 +366,7 @@ export function CardSelectionPage({ onNavigateToConfig }: { onNavigateToConfig?:
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 12 }}>
-            <button onClick={onNavigateToConfig} style={{ color: PALETTE.textMuted, background: 'none', border: 'none', cursor: 'pointer', fontFamily: FONT_DISPLAY, fontSize: 14, padding: '10px 16px' }}>使用教程</button>
+          <div>
             <button onClick={runSolve} disabled={isCalculating} style={{ background: PALETTE.accent, color: '#fff', border: 'none', borderRadius: 4, height: 44, padding: '0 32px', fontWeight: 500, cursor: isCalculating ? 'wait' : 'pointer', opacity: isCalculating ? 0.7 : 1, fontFamily: FONT_DISPLAY, fontSize: 15 }}>
               {isCalculating ? '计算中...' : '开始求解'}
             </button>

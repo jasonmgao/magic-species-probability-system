@@ -2,9 +2,7 @@
  * 使用指南 - 全部使用中宋字体
  */
 
-import { Typography, Table, Tag, Divider, Button, Steps } from 'antd';
-
-const { Title, Text } = Typography;
+import { Table, Tag, Divider } from 'antd';
 
 const FONT_DISPLAY = "'Noto Serif SC', 'Source Han Serif SC', 'SimSun', serif";
 const FONT_MONO = "'IBM Plex Mono', 'SF Mono', monospace";
@@ -19,19 +17,53 @@ interface ProbabilityConfigPageProps {
   onNavigateToSelection?: () => void;
 }
 
+// 顶部导航栏
+function TopNav({ onNavigateToSelection, title }: { onNavigateToSelection?: () => void; title: string }) {
+  return (
+    <div style={{
+      background: PALETTE.surface,
+      borderBottom: `1px solid ${PALETTE.border}`,
+      padding: '16px 24px',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    }}>
+      <div style={{ fontSize: 18, fontWeight: 600, color: PALETTE.text, fontFamily: FONT_DISPLAY }}>
+        {title}
+      </div>
+      <div>
+        <button
+          onClick={onNavigateToSelection}
+          style={{
+            color: PALETTE.textMuted,
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            fontFamily: FONT_DISPLAY,
+            fontSize: 14,
+            padding: '8px 16px',
+          }}
+        >
+          《 返回配置
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function ProbabilityConfigPage({ onNavigateToSelection }: ProbabilityConfigPageProps) {
   return (
     <div style={{ minHeight: '100vh', background: PALETTE.bg, fontFamily: FONT_DISPLAY }}>
-      {/* 居中标题 */}
-      <div style={{ padding: '48px 24px 32px', textAlign: 'center' }}>
-        <button onClick={onNavigateToSelection} style={{ position: 'absolute', left: 24, top: 48, color: PALETTE.textMuted, background: 'none', border: 'none', cursor: 'pointer', fontFamily: FONT_DISPLAY, fontSize: 14 }}>《 返回</button>
-        <div style={{ display: 'inline-block', padding: '0 32px 16px', borderBottom: `2px solid ${PALETTE.accent}` }}>
-          <h1 style={{ margin: 0, fontSize: 36, fontWeight: 700, color: PALETTE.text, letterSpacing: '0.08em', fontFamily: FONT_DISPLAY }}>
-            使用指南
-          </h1>
-        </div>
-        <p style={{ margin: '16px 0 0', fontSize: 15, color: PALETTE.textMuted, fontFamily: FONT_DISPLAY }}>
-          五分钟上手概率系数调控系统
+      {/* 顶部导航栏 */}
+      <TopNav onNavigateToSelection={onNavigateToSelection} title="使用指南" />
+
+      {/* 标题区 */}
+      <div style={{ padding: '32px 24px', textAlign: 'center' }}>
+        <h1 style={{ margin: 0, fontSize: 32, fontWeight: 700, color: PALETTE.text, letterSpacing: '0.08em', fontFamily: FONT_DISPLAY }}>
+          五分钟上手概率系数调控
+        </h1>
+        <p style={{ margin: '12px 0 0', fontSize: 15, color: PALETTE.textMuted, fontFamily: FONT_DISPLAY }}>
+          理解降权系数机制与概率计算原理
         </p>
       </div>
 
