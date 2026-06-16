@@ -332,9 +332,9 @@ export async function solveCoefficientsAsync(
   const tier1Cards = cardsNeedingCoeff.filter(c => c.maxExcess === 1).map(c => c.card);
   const tier2Cards = cardsNeedingCoeff.filter(c => c.maxExcess >= 2).map(c => c.card);
 
-  // V6.5：更严格的范围，因为"下一个副本"逻辑让降权更频繁
-  const tier1Range = [0.0005, 0.001, 0.002, 0.003, 0.005, 0.008, 0.01, 0.015, 0.02];
-  const tier2Range = [0.005, 0.01, 0.015, 0.02, 0.03, 0.05, 0.08, 0.1, 0.15, 0.2];
+  // V6.5：3张卡需要极低系数，范围收紧到0.00001~0.05
+  const tier1Range = [0.00001, 0.00002, 0.00005, 0.0001, 0.0002, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05];
+  const tier2Range = [0.0001, 0.0002, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05];
 
   let bestCoeff1 = 0.001;
   let bestCoeff2 = 0.02;
@@ -383,13 +383,13 @@ export async function solveCoefficientsAsync(
     }
   }
 
-  // 细网格（8×8=64次，添加进度更新，范围±3倍确保找到最优）
+  // 细网格（8×8=64次，范围±5倍但上限封顶0.05）
   const fine1Steps = 8;
   const fine2Steps = 8;
-  const fine1Low = Math.max(0.0001, bestCoeff1 * 0.2);
-  const fine1High = Math.min(0.1, bestCoeff1 * 5);
-  const fine2Low = Math.max(0.001, bestCoeff2 * 0.2);
-  const fine2High = Math.min(0.5, bestCoeff2 * 5);
+  const fine1Low = Math.max(0.000005, bestCoeff1 * 0.2);
+  const fine1High = Math.min(0.05, bestCoeff1 * 5);
+  const fine2Low = Math.max(0.00005, bestCoeff2 * 0.2);
+  const fine2High = Math.min(0.05, bestCoeff2 * 5);
 
   for (let i = 0; i <= fine1Steps; i++) {
     for (let j = 0; j <= fine2Steps; j++) {
