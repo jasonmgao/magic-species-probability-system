@@ -288,6 +288,9 @@ function drawOneCard(
 
   // 应用降权
   const weightedProbs: Record<string, number> = {};
+  // DEBUG: track if coefficient is actually applied
+  let debugCard = 'C';
+  let debugApplied = false;
   for (const card of ALL_CARDS) {
     const holdCount = backpack[card] || 0;
     const isInCurrentWeek = currentCombo.cards.includes(card);
@@ -303,6 +306,10 @@ function drawOneCard(
         const coeffIndex = Math.min(holdCount, cardCoeffs.length - 1);
         const coeff = cardCoeffs[coeffIndex];
         weightedProbs[card] = rawProbs[card] * coeff;
+        if (card === debugCard && coeff < 1.0) {
+          debugApplied = true;
+          // console.log(`[DEBUG] ${card}: hold=${holdCount}, coeff=${coeff}, prob=${rawProbs[card]}->${weightedProbs[card]}`);
+        }
       }
     }
   }
@@ -383,10 +390,16 @@ export async function solveCoefficientsAsync(
 
   // 自定义第二周搜索（需要固定第一周系数）
   const w2Needs = countCardNeeds(setup.week2.cards);
+  // 🎯 测试：直接用你算的0.0148
+  const TEST_COEFF = 0.0148;
+  console.log('[DEBUG] Using fixed coeff:', TEST_COEFF);
+  const testResult = await simulateBothWeeks(setup, w1Coeffs, createUniformCoefficients(w2Needs, TEST_COEFF), 5000);
+  console.log('[DEBUG] Fixed coeff result:', testResult);
+
   // 🎯 新策略后范围恢复正常：
   // 7天：~0.008, 14天：~0.002 (按泊松反推)
-  let low = 0.0001;   // 0.01%
-  let high = 0.01;    // 1%
+  let low = 0.001;   // 0.1%
+  let high = 0.05;   // 5%
 
   // 立即回调显示开始第二周搜索
   if (onProgress) {
