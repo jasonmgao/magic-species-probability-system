@@ -7,7 +7,6 @@ import { Card as AntCard, Typography, Space, Table, Tag, Steps, Alert, Divider, 
 import { ArrowLeftOutlined, BookOutlined, CalculatorOutlined, CheckCircleOutlined } from '@ant-design/icons';
 
 const { Title, Text, Paragraph } = Typography;
-const { Step } = Steps;
 
 interface ProbabilityConfigPageProps {
   onNavigateToSelection?: () => void;
@@ -63,72 +62,76 @@ export function ProbabilityConfigPage({ onNavigateToSelection }: ProbabilityConf
 
       {/* 使用步骤 */}
       <AntCard title="📝 使用步骤：系数怎么用？" style={{ marginBottom: 24 }}>
-        <Steps direction="vertical" current={-1}>
-          <Step
-            title="确定卡组组合"
-            description={
-              <div style={{ marginTop: 8 }}>
-                <Text>先决定两周分别用什么卡。例如：</Text>
-                <ul>
-                  <li>第一周：AAB（需要2张A + 1张B，共3个位置）</li>
-                  <li>第二周：CCC（需要3张C，共3个位置）</li>
-                </ul>
-                <Tag color="blue">提示：卡越少越难集齐，需要更高的每日抽奖次数</Tag>
-              </div>
-            }
-          />
-          <Step
-            title="系统自动计算系数"
-            description={
-              <div style={{ marginTop: 8 }}>
-                <Text>点击【开始测算】，系统会：</Text>
-                <ol>
-                  <li>模拟成千上万次玩家抽卡过程</li>
-                  <li>调整系数让第一周完成率 ≈ 4%</li>
-                  <li>调整系数让第二周完成率 ≈ 4%</li>
-                </ol>
-                <Text type="warning">系数会自动显示在结果页，不需要手算！</Text>
-              </div>
-            }
-          />
-          <Step
-            title="按持有数应用系数"
-            description={
-              <div style={{ marginTop: 8 }}>
-                <Text>系统每一天抽卡时，会检查玩家<strong>背包里总共持有几张该周卡</strong>（不是单种卡）：</Text>
-                <Table
-                  size="small"
-                  style={{ marginTop: 8, maxWidth: 500 }}
-                  dataSource={[
-                    { hold: 0, coeff: '1.0', desc: '还没该周卡，正常概率' },
-                    { hold: 1, coeff: '0.1~0.5', desc: '有1张了，概率降到10%~50%' },
-                    { hold: 2, coeff: '0.05~0.3', desc: '有2张了，概率再降' },
-                    { hold: '≥3', coeff: '0', desc: '已集齐，该周卡不出' },
-                  ]}
-                  columns={[
-                    { title: '持有数', dataIndex: 'hold', key: 'hold', width: 80 },
-                    { title: '系数示例', dataIndex: 'coeff', key: 'coeff', width: 100 },
-                    { title: '效果', dataIndex: 'desc', key: 'desc' },
-                  ]}
-                  pagination={false}
-                />
-              </div>
-            }
-          />
-          <Step
-            title="跨周关联（V5新特性）"
-            description={
-              <div style={{ marginTop: 8 }}>
-                <Text>关键设计：<strong>两周卡牌互相压制</strong></Text>
-                <ul>
-                  <li>第一周时，如果玩家背包里有很多C（下周卡），C的概率也会降</li>
-                  <li>这是为了防止玩家第一周"偷跑"存太多下周卡，导致第二周太容易完成</li>
-                </ul>
-                <Tag color="green">结果：两周完成率都被控在4%左右，公平且有挑战性</Tag>
-              </div>
-            }
-          />
-        </Steps>
+        <Steps
+          direction="vertical"
+          current={-1}
+          items={[
+            {
+              title: '确定卡组组合',
+              description: (
+                <div style={{ marginTop: 8 }}>
+                  <Text>先决定两周分别用什么卡。例如：</Text>
+                  <ul>
+                    <li>第一周：AAB（需要2张A + 1张B，共3个位置）</li>
+                    <li>第二周：CCC（需要3张C，共3个位置）</li>
+                  </ul>
+                  <Tag color="blue">提示：卡越少越难集齐，需要更高的每日抽奖次数</Tag>
+                </div>
+              ),
+            },
+            {
+              title: '系统自动计算系数',
+              description: (
+                <div style={{ marginTop: 8 }}>
+                  <Text>点击【开始测算】，系统会：</Text>
+                  <ol>
+                    <li>模拟成千上万次玩家抽卡过程</li>
+                    <li>调整系数让第一周完成率 ≈ 4%</li>
+                    <li>调整系数让第二周完成率 ≈ 4%</li>
+                  </ol>
+                  <Text type="warning">系数会自动显示在结果页，不需要手算！</Text>
+                </div>
+              ),
+            },
+            {
+              title: '按持有数应用系数',
+              description: (
+                <div style={{ marginTop: 8 }}>
+                  <Text>系统每一天抽卡时，会检查玩家<strong>背包里总共持有几张该周卡</strong>（不是单种卡）：</Text>
+                  <Table
+                    size="small"
+                    style={{ marginTop: 8, maxWidth: 500 }}
+                    dataSource={[
+                      { hold: 0, coeff: '1.0', desc: '还没该周卡，正常概率' },
+                      { hold: 1, coeff: '0.1~0.5', desc: '有1张了，概率降到10%~50%' },
+                      { hold: 2, coeff: '0.05~0.3', desc: '有2张了，概率再降' },
+                      { hold: '≥3', coeff: '0', desc: '已集齐，该周卡不出' },
+                    ]}
+                    columns={[
+                      { title: '持有数', dataIndex: 'hold', key: 'hold', width: 80 },
+                      { title: '系数示例', dataIndex: 'coeff', key: 'coeff', width: 100 },
+                      { title: '效果', dataIndex: 'desc', key: 'desc' },
+                    ]}
+                    pagination={false}
+                  />
+                </div>
+              ),
+            },
+            {
+              title: '跨周关联（V5新特性）',
+              description: (
+                <div style={{ marginTop: 8 }}>
+                  <Text>关键设计：<strong>两周卡牌互相压制</strong></Text>
+                  <ul>
+                    <li>第一周时，如果玩家背包里有很多C（下周卡），C的概率也会降</li>
+                    <li>这是为了防止玩家第一周"偷跑"存太多下周卡，导致第二周太容易完成</li>
+                  </ul>
+                  <Tag color="green">结果：两周完成率都被控在4%左右，公平且有挑战性</Tag>
+                </div>
+              ),
+            },
+          ]}
+        />
       </AntCard>
 
       {/* 概率计算原理 */}
