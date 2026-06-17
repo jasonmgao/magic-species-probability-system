@@ -160,19 +160,20 @@ function drawOneCard(
 
     if (isCurrent) {
       // 🎯 V6.5：当前周卡，按"下一个副本"决定
-      if (shouldReduceNextCopy(currentCombo, backpack, card)) {
-        // 下一个抽的是第2张及以后，应用系数
-        coeff = coeffArray[1] ?? 0.01;
+      const nextIndex = getNextCopyIndex(currentCombo, backpack, card);
+      if (nextIndex >= 1) {
+        // 下一个抽的是第2张及以后，应用对应位置的系数
+        coeff = coeffArray[nextIndex] ?? coeffArray[coeffArray.length - 1] ?? 0.01;
       } else {
         // 下一个抽的是第1张，正常概率
         coeff = 1.0;
       }
     } else if (isCross) {
       // 🎯 V6.5修正：跨周卡首张正常出，有1张后才卡第2张
-      // 这样既防囤积（第2张极难），又保证可获得性（首张正常）
-      if (shouldReduceNextCopy(crossCombo, backpack, card)) {
-        // 有1张跨周卡，下一个是第2张 → 极难
-        coeff = coeffArray[1] ?? 0.001;
+      const crossNextIndex = getNextCopyIndex(crossCombo, backpack, card);
+      if (crossNextIndex >= 1) {
+        // 有1张跨周卡，下一个是第2张及以后 → 极难
+        coeff = coeffArray[crossNextIndex] ?? coeffArray[coeffArray.length - 1] ?? 0.001;
       } else {
         // 没有或只有1张需求 → 首张正常出
         coeff = 1.0;
@@ -201,13 +202,15 @@ function drawOneCard(
       let luckyCoeff: number;
 
       if (luckyIsCurrent) {
-        luckyCoeff = shouldReduceNextCopy(currentCombo, backpack, luckyCard)
-          ? (luckyCoeffArray[1] ?? 0.01)
+        const luckyNextIndex = getNextCopyIndex(currentCombo, backpack, luckyCard);
+        luckyCoeff = luckyNextIndex >= 1
+          ? (luckyCoeffArray[luckyNextIndex] ?? luckyCoeffArray[luckyCoeffArray.length - 1] ?? 0.01)
           : 1.0;
       } else if (crossCards.has(luckyCard)) {
         // 跨周且已有1张+，需要降权
-        luckyCoeff = shouldReduceNextCopy(crossCombo, backpack, luckyCard)
-          ? (luckyCoeffArray[1] ?? 0.001)
+        const luckyCrossNextIndex = getNextCopyIndex(crossCombo, backpack, luckyCard);
+        luckyCoeff = luckyCrossNextIndex >= 1
+          ? (luckyCoeffArray[luckyCrossNextIndex] ?? luckyCoeffArray[luckyCoeffArray.length - 1] ?? 0.001)
           : 1.0;
       } else {
         luckyCoeff = 1.0;
@@ -348,7 +351,12 @@ export async function solveCoefficientsAsync(
         if (maxExcess === 1) {
           testCoeffs[card] = [1.0, c1];
         } else if (maxExcess >= 2) {
-          testCoeffs[card] = [1.0, c2];
+          // 生成多个递减系数
+          const arr: CardCoefficients = [1.0];
+          for (let i = 0; i < maxExcess; i++) {
+            arr.push(c2 * Math.pow(0.5, i));
+          }
+          testCoeffs[card] = arr;
         } else {
           testCoeffs[card] = [1.0];
         }
@@ -398,7 +406,12 @@ export async function solveCoefficientsAsync(
         if (maxExcess === 1) {
           testCoeffs[card] = [1.0, c1];
         } else if (maxExcess >= 2) {
-          testCoeffs[card] = [1.0, c2];
+          // 生成多个递减系数
+          const arr: CardCoefficients = [1.0];
+          for (let i = 0; i < maxExcess; i++) {
+            arr.push(c2 * Math.pow(0.5, i));
+          }
+          testCoeffs[card] = arr;
         } else {
           testCoeffs[card] = [1.0];
         }
@@ -445,9 +458,16 @@ export async function solveCoefficientsAsync(
   for (const card of ALL_CARDS) {
     const maxExcess = getMaxExcessSlots(setup, card);
     if (maxExcess === 1) {
+      // 只需要1个超额槽位：第1张正常，第2张降权
       finalCoeffs[card] = [1.0, bestCoeff1];
     } else if (maxExcess >= 2) {
-      finalCoeffs[card] = [1.0, bestCoeff2];
+      // 需要2+个超额槽位：生成多个递减系数
+      // 第2张用 bestCoeff2，第3张用 bestCoeff2*0.5，第4张用 bestCoeff2*0.25，以此类推
+      const arr: CardCoefficients = [1.0];
+      for (let i = 0; i < maxExcess; i++) {
+        arr.push(bestCoeff2 * Math.pow(0.5, i));
+      }
+      finalCoeffs[card] = arr;
     } else {
       finalCoeffs[card] = [1.0];
     }
@@ -485,7 +505,10 @@ export function generateCoefficientReport(
     const week1NeedWithCross = Math.max(w1Need, w2Need);
     if (week1NeedWithCross > 1) {
       const arr: CardCoefficients = [1.0];
-      for (let i = 1; i < week1NeedWithCross; i++) arr.push(globalCoeff[1] ?? 1.0);
+      for (let i = 1; i < week1NeedWithCross; i++) {
+        // 使用globalCoeff中对应位置的系数（如果有的话），否则使用最后一个
+        arr.push(globalCoeff[i] ?? globalCoeff[globalCoeff.length - 1] ?? 1.0);
+      }
       week1Coeffs[card] = arr;
     } else {
       week1Coeffs[card] = [1.0];
@@ -495,7 +518,9 @@ export function generateCoefficientReport(
     const week2NeedWithCross = Math.max(w2Need, w1Need);
     if (week2NeedWithCross > 1) {
       const arr: CardCoefficients = [1.0];
-      for (let i = 1; i < week2NeedWithCross; i++) arr.push(globalCoeff[1] ?? 1.0);
+      for (let i = 1; i < week2NeedWithCross; i++) {
+        arr.push(globalCoeff[i] ?? globalCoeff[globalCoeff.length - 1] ?? 1.0);
+      }
       week2Coeffs[card] = arr;
     } else {
       week2Coeffs[card] = [1.0];
