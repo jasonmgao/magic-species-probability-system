@@ -133,39 +133,26 @@ export function ProbabilityConfigPage({ onNavigateToSelection }: ProbabilityConf
         </StepBlock>
 
         {/* 第三步：幸运卡机制详解 */}
-        <StepBlock number="三" title="幸运卡机制（运营配置）">
-          <InfoBox type="success" title="幸运日是固定的轮换">
-            幸运日不是随机，而是固定轮换。运营只需要确认这个机制，不需要每次配置。
+        <StepBlock number="三" title="幸运卡机制">
+          <InfoBox type="success" title="轮换周期">
+            每周按 1神奇日 : 2稀有日 : 5普通日 的周期轮换（具体周几可变）。
+            神奇日固定A为幸运卡，稀有日随机选B/C/D/E中1张，普通日随机选F/G/H/I/J中1张。
           </InfoBox>
 
           <Table size="small" style={{ marginBottom: 20 }} dataSource={[
-            { key: '1', day: '神奇日', freq: '每周1天（如周一）', lucky: 'A', effect: 'A卡概率直接设为1.2%' },
-            { key: '2', day: '稀有日', freq: '每周1天（如周三）', lucky: 'B/C/D/E中1张', effect: '当天随机1张稀有卡设为1.2%' },
-            { key: '3', day: '普通日', freq: '每周5天', lucky: 'F/G/H/I/J中1张', effect: '当天随机1张普通卡设为1.2%' },
+            { key: '1', day: '神奇日', freq: '每周1天', lucky: 'A', effect: 'A卡概率直接设为1.2%' },
+            { key: '2', day: '稀有日', freq: '每周2天', lucky: 'B/C/D/E中选1张', effect: '当天1张稀有卡设为1.2%' },
+            { key: '3', day: '普通日', freq: '每周5天', lucky: 'F/G/H/I/J中选1张', effect: '当天1张普通卡设为1.2%' },
           ]} columns={[
             { title: '日期类型', dataIndex: 'day', width: 100, render: (v) => <span style={{ fontFamily: FONT_DISPLAY }}>{v}</span> },
-            { title: '频率', dataIndex: 'freq', render: (v) => <span style={{ fontFamily: FONT_DISPLAY }}>{v}</span> },
-            { title: '幸运卡', dataIndex: 'lucky', width: 120, render: (v) => <span style={{ fontFamily: FONT_MONO }}>{v}</span> },
+            { title: '频率', dataIndex: 'freq', width: 90, render: (v) => <span style={{ fontFamily: FONT_DISPLAY }}>{v}</span> },
+            { title: '幸运卡', dataIndex: 'lucky', render: (v) => <span style={{ fontFamily: FONT_MONO }}>{v}</span> },
             { title: '效果', dataIndex: 'effect', render: (v) => <span style={{ fontFamily: FONT_DISPLAY }}>{v}</span> },
           ]} pagination={false} />
 
-          <InfoBox type="warning" title="重要：幸运卡也要受降权影响">
-            如果玩家已经有A的第1张，即使在神奇日（A是幸运卡），抽到第2张A的概率是：<br/>
-            <code style={{ fontFamily: FONT_MONO }}>1.2% × 0.0005 = 0.0006%</code><br/>
-            先设A=1.2%，再在此基础上乘以降权系数0.0005。
+          <InfoBox type="warning" title="幸运卡也要受降权影响">
+            如果玩家背包{`{A:1}`}，神奇日A设为1.2%后，还要乘以降权系数（如0.0005），最终A概率只有 0.0006%。
           </InfoBox>
-
-          <div style={{ background: PALETTE.bg, padding: 16, borderRadius: 4, fontSize: 13, lineHeight: 1.8 }}>
-            <div style={{ fontWeight: 600, marginBottom: 8, fontFamily: FONT_DISPLAY }}>幸运日计算示例（神奇日，A是幸运卡）</div>
-            <div style={{ fontFamily: FONT_MONO }}>
-              <div>场景：玩家背包{`{A:1}`}，卡组需要AAB</div>
-              <div>——</div>
-              <div>步骤1：先把A设为幸运概率 → A=1.2%</div>
-              <div>步骤2：应用降权（已有1张，下一张是第2张）→ 1.2% × 0.0005 = 0.0006%</div>
-              <div>步骤3：其他卡保持基础概率（B=7%，其他稀有/普通卡按原概率）</div>
-              <div>步骤4：归一化 → 最终A的实际概率 ≈ 0.001%</div>
-            </div>
-          </div>
         </StepBlock>
 
         {/* 第四步：降权系数详解 */}
@@ -194,58 +181,125 @@ export function ProbabilityConfigPage({ onNavigateToSelection }: ProbabilityConf
               <li>首张跨周卡：正常概率（让玩家有机会获得）</li>
               <li>第2张跨周卡：同样降权（防止第一周囤太多）</li>
             </ul>
+
+            <p style={{ marginTop: 16 }}><strong>两周的降权系数表不同</strong></p>
+            <p style={{ color: PALETTE.textMuted, marginTop: 8 }}>
+              以卡组 AAB / HHI 为例：<br/>
+              第一周系数表：A需要2张 → 第2张A降权；H作为跨周卡 → 第2张H也降权<br/>
+              第二周系数表：H需要2张 → 第2张H降权；A不再需要 → A无降权
+            </p>
+            <p style={{ color: PALETTE.accent, marginTop: 8, fontSize: 13 }}>
+              注意：每周有各自的降权系数表，系统输出时给出两张表，实际使用根据当前是第几周选择。
+            </p>
           </div>
         </StepBlock>
 
-        {/* 第五步：完整示例 */}
-        <StepBlock number="五" title="完整计算示例">
-          <div style={{ background: '#f8f9fa', padding: 20, borderRadius: 4, fontSize: 13, lineHeight: 2 }}>
-            <div style={{ fontWeight: 600, marginBottom: 12, fontFamily: FONT_DISPLAY }}>场景：第一周 AAB，神奇日，玩家背包{`{A:1}`}</div>
-            <div style={{ fontFamily: FONT_MONO }}>
-              <div>步骤1 - 基础概率 & 幸运卡修正：</div>
-              <div style={{ paddingLeft: 20 }}>今天是神奇日，A是幸运卡，直接设A=1.2%（不再用基础2%）</div>
-              <div style={{ paddingLeft: 20 }}>B=7%（稀有），C/D/E=7%（稀有），F/G/H/I/J=14%（普通）</div>
-              <div>——</div>
-              <div>步骤2 - 应用降权系数：</div>
-              <div style={{ paddingLeft: 20 }}>A已有1张，下一张是第2张 → 系数=0.0005</div>
-              <div style={{ paddingLeft: 20 }}>A的概率 = 1.2% × 0.0005 = 0.0006%（先设1.2%，再降权）</div>
-              <div style={{ paddingLeft: 20 }}>B只需要1张 → 系数=1.0，概率=7%</div>
-              <div style={{ paddingLeft: 20 }}>其他卡系数=1.0，按基础概率</div>
-              <div>——</div>
-              <div>步骤3 - 归一化前总和 ≈ 100%（具体值取决于各卡概率）</div>
-              <div>步骤4 - 归一化后最终概率按比例调整</div>
+        {/* 第五步：完整示例 - AAB/HHI */}
+        <StepBlock number="五" title="完整计算示例（AAB/HHI，第一周神奇日）">
+          <div style={{ background: '#f8f9fa', padding: 20, borderRadius: 4, fontSize: 13, lineHeight: 2, fontFamily: FONT_DISPLAY }}>
+            <div style={{ fontWeight: 600, marginBottom: 16 }}>场景设定</div>
+            <div style={{ marginBottom: 20, color: PALETTE.textMuted }}>
+              卡组：第一周 AAB，第二周 HHI<br/>
+              当前：第一周神奇日，A是幸运卡<br/>
+              玩家背包：{`{A:1, H:1}`}（已有1张A，1张H）
             </div>
+
+            <div style={{ fontWeight: 600, marginBottom: 12 }}>步骤1 - 确定天数和背包状况</div>
+            <div style={{ paddingLeft: 20, marginBottom: 16, color: PALETTE.textMuted }}>
+              今天是神奇日（A为幸运卡），玩家持有 A=1张（本周需要2张），H=1张（跨周卡，第二周需要2张）。
+            </div>
+
+            <div style={{ fontWeight: 600, marginBottom: 12 }}>步骤2 - 幸运卡修正（神奇日A=1.2%）</div>
+            <div style={{ paddingLeft: 20, marginBottom: 16, color: PALETTE.textMuted }}>
+              A卡：基础2% → 直接设为 1.2%（幸运卡）<br/>
+              其他卡：保持基础概率不变
+            </div>
+
+            <div style={{ fontWeight: 600, marginBottom: 12 }}>步骤3 - 应用降权系数（使用第一周系数表）</div>
+            <div style={{ paddingLeft: 20, marginBottom: 16, color: PALETTE.textMuted, fontFamily: FONT_MONO }}>
+              · A（本周需要2张，已有1张）：1.2% × 0.0005 = 0.0006%（第2张降权）<br/>
+              · B（本周需要1张）：7% × 1.0 = 7%（无降权）<br/>
+              · H（跨周卡，第二周需要2张，已有1张）：14% × 0.0005 = 0.007%（跨周第2张降权）<br/>
+              · C/D/E（背景卡）：7% × 1.0 = 7%<br/>
+              · F/G/I/J（背景卡）：14% × 1.0 = 14%
+            </div>
+
+            <div style={{ fontWeight: 600, marginBottom: 12 }}>步骤4 - 计算当前总概率（归一化前）</div>
+            <div style={{ paddingLeft: 20, marginBottom: 16, fontFamily: FONT_MONO }}>
+              A(0.0006) + B(7) + C(7) + D(7) + E(7) + F(14) + G(14) + H(0.007) + I(14) + J(14) = 84.0076%
+            </div>
+
+            <div style={{ fontWeight: 600, marginBottom: 12 }}>步骤5 - 归一化扩大（100 / 84.0076 ≈ 1.1904倍）</div>
           </div>
 
-          <InfoBox type="info" title="关键理解">
-            虽然今天是神奇日A是幸运卡，但玩家已有1张A，第2张A要先设为1.2%再降权×0.0005，<br/>
-            最终概率极低。这才是"幸运日也救不了第2张"的正确逻辑。
+          <InfoBox type="success" title="最终概率配置表（本周实际使用）">
+            <Table size="small" dataSource={[
+              { card: 'A', base: '2%', lucky: '1.2%', reduced: '0.0006%', final: '0.0007%' },
+              { card: 'B', base: '7%', lucky: '—', reduced: '7%', final: '8.33%' },
+              { card: 'C', base: '7%', lucky: '—', reduced: '7%', final: '8.33%' },
+              { card: 'D', base: '7%', lucky: '—', reduced: '7%', final: '8.33%' },
+              { card: 'E', base: '7%', lucky: '—', reduced: '7%', final: '8.33%' },
+              { card: 'F', base: '14%', lucky: '—', reduced: '14%', final: '16.67%' },
+              { card: 'G', base: '14%', lucky: '—', reduced: '14%', final: '16.67%' },
+              { card: 'H', base: '14%', lucky: '—', reduced: '0.007%', final: '0.008%' },
+              { card: 'I', base: '14%', lucky: '—', reduced: '14%', final: '16.67%' },
+              { card: 'J', base: '14%', lucky: '—', reduced: '14%', final: '16.67%' },
+            ]} columns={[
+              { title: '卡牌', dataIndex: 'card', width: 60, render: (v) => <span style={{ fontFamily: FONT_MONO }}>{v}</span> },
+              { title: '基础', dataIndex: 'base', width: 70, render: (v) => <span style={{ fontFamily: FONT_MONO }}>{v}</span> },
+              { title: '幸运修正', dataIndex: 'lucky', width: 80, render: (v) => <span style={{ fontFamily: FONT_MONO, color: v !== '—' ? PALETTE.success : undefined }}>{v}</span> },
+              { title: '降权后', dataIndex: 'reduced', width: 90, render: (v) => <span style={{ fontFamily: FONT_MONO }}>{v}</span> },
+              { title: '最终概率(归一化)', dataIndex: 'final', render: (v) => <span style={{ fontFamily: FONT_MONO, fontWeight: 600, color: parseFloat(v) < 0.01 ? PALETTE.accent : undefined }}>{v}</span> },
+            ]} pagination={false} />
+          </InfoBox>
+
+          <InfoBox type="info" title="第二周的差异">
+            第二周使用 HHI 系数表，此时：<br/>
+            · H需要2张 → 第2张H降权<br/>
+            · A不再需要 → A无降权（无论背包里有没有A，都是正常概率）<br/>
+            因此同一玩家，第一周和第二周的抽卡概率表是不同的。
           </InfoBox>
         </StepBlock>
 
-        {/* 常见问题 */}
-        <StepBlock number="六" title="常见问题">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            <div>
-              <span style={{ fontSize: 15, fontWeight: 600, color: PALETTE.text, display: 'block', marginBottom: 8, fontFamily: FONT_DISPLAY }}>问：神奇卡A永远只需要1张，为什么系数表里还有A？</span>
-              <span style={{ fontSize: 13, color: PALETTE.textMuted, lineHeight: 1.7, fontFamily: FONT_DISPLAY }}>
-                虽然卡组只需要1张A，但跨周时（如第二周卡组也有A），A可能成为"跨周卡"需要第2张。所以系数表里要预留A的第2张系数。
-              </span>
+        {/* 配卡经验 */}
+        <StepBlock number="六" title="配卡经验">
+          <div style={{ fontSize: 14, lineHeight: 2, fontFamily: FONT_DISPLAY }}>
+            <p style={{ color: PALETTE.textMuted, marginBottom: 16 }}>
+              怎样的卡组配置能让完成率控制在目标范围（4%左右）？以下是系统验证过的原则：
+            </p>
+
+            <p><strong>1. 卡组总卡数控制在3-4张</strong></p>
+            <p style={{ color: PALETTE.textMuted, marginLeft: 20, marginBottom: 12 }}>
+              2张卡太简单，完成率会超标；5张卡以上太难，系数压到0.00001也可能达不到4%。<br/>
+              推荐：AAB（3张）、AAAB（4张）、ABBC（4张）<br/>
+              不推荐：HH（2张）、ABCDE（5张）
+            </p>
+
+            <p><strong>2. 单卡重复次数 ≤ 3张</strong></p>
+            <p style={{ color: PALETTE.textMuted, marginLeft: 20, marginBottom: 12 }}>
+              同一张卡需要4张以上（如AAAA）会导致系数压到极限（0.00001），且完成率仍可能超标。<br/>
+              推荐：AAB（2张A）、HHF（2张H）<br/>
+              不推荐：AAAA、HHHH
+            </p>
+
+            <p><strong>3. 跨周重叠要谨慎</strong></p>
+            <p style={{ color: PALETTE.textMuted, marginLeft: 20, marginBottom: 12 }}>
+              上周卡组与本周卡组有重叠卡（如第一周AAB，第二周AAF），会叠加跨周降权，使完成率偏低。<br/>
+              如果希望两周难度均匀，尽量减少跨周重叠。
+            </p>
+
+            <p><strong>4. 推荐卡组组合</strong></p>
+            <div style={{ marginLeft: 20, fontFamily: FONT_MONO, fontSize: 13, marginBottom: 12 }}>
+              <div style={{ color: PALETTE.success, marginBottom: 4 }}>✓ 简单组合（完成率≈4%）：AAB + HHF、AAAB + IIJ、ABBC + HHI</div>
+              <div style={{ color: PALETTE.warning, marginBottom: 4 }}>△ 中等难度（可能需要放宽到5%）：AAB + HHI（跨周重叠）、AAAB + HHH（3张重复）</div>
+              <div style={{ color: PALETTE.accent }}>✗ 避免：AAAA（超难）、AB + CD（太简单）、AABCC + HHIIJ（卡太多）</div>
             </div>
-            <Divider style={{ margin: 0, borderColor: PALETTE.borderLight }} />
-            <div>
-              <span style={{ fontSize: 15, fontWeight: 600, color: PALETTE.text, display: 'block', marginBottom: 8, fontFamily: FONT_DISPLAY }}>问：完成率达不到4%怎么办？</span>
-              <span style={{ fontSize: 13, color: PALETTE.textMuted, lineHeight: 1.7, fontFamily: FONT_DISPLAY }}>
-                1) 放宽误差接受5%或3%；2) 调整卡组组合（如AAB→AAAB增加难度）；3) 调整每日抽奖次数。
-              </span>
-            </div>
-            <Divider style={{ margin: 0, borderColor: PALETTE.borderLight }} />
-            <div>
-              <span style={{ fontSize: 15, fontWeight: 600, color: PALETTE.text, display: 'block', marginBottom: 8, fontFamily: FONT_DISPLAY }}>问：玩家投诉抽不到卡怎么办？</span>
-              <span style={{ fontSize: 13, color: PALETTE.textMuted, lineHeight: 1.7, fontFamily: FONT_DISPLAY }}>
-                这是设计预期。运营需要在活动说明里明确"本活动具有挑战性，只有少数玩家能完成"。这不是BUG，是机制。
-              </span>
-            </div>
+
+            <p><strong>5. 完成率不达标时的调整</strong></p>
+            <p style={{ color: PALETTE.textMuted, marginLeft: 20 }}>
+              · 完成率 > 5%（太简单）：增加单卡重复数（AAB→AAAB）或增加卡种类数<br/>
+              · 完成率 < 3%（太难）：减少单卡重复数（AAAB→AAB）或减少跨周重叠
+            </p>
           </div>
         </StepBlock>
 
