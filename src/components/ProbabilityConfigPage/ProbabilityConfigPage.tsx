@@ -297,8 +297,8 @@ export function ProbabilityConfigPage({ onNavigateToSelection }: ProbabilityConf
 
             <p><strong>5. 完成率不达标时的调整</strong></p>
             <p style={{ color: PALETTE.textMuted, marginLeft: 20 }}>
-              · 完成率 > 5%（太简单）：增加单卡重复数（AAB→AAAB）或增加卡种类数<br/>
-              · 完成率 < 3%（太难）：减少单卡重复数（AAAB→AAB）或减少跨周重叠
+              · 完成率 &gt; 5%（太简单）：增加单卡重复数（AAB→AAAB）或增加卡种类数<br/>
+              · 完成率 &lt; 3%（太难）：减少单卡重复数（AAAB→AAB）或减少跨周重叠
             </p>
           </div>
         </StepBlock>
