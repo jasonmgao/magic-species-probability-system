@@ -96,8 +96,7 @@ export function ProbabilityConfigPage({ onNavigateToSelection }: ProbabilityConf
         {/* 第一步：理解卡牌结构 */}
         <StepBlock number="一" title="理解基础卡牌结构">
           <InfoBox type="info" title="卡牌基础概率">
-            A=2%，B/C/D/E/F/G/H/I/J 各7%，总和72%（剩余28%为其他保底机制）。
-            不需要配置，系统固定。
+            A=2%，B/C/D/E (稀有) 各7%，F/G/H/I/J (普通) 各14%。总和100%，固定配置。
           </InfoBox>
         </StepBlock>
 
@@ -109,7 +108,7 @@ export function ProbabilityConfigPage({ onNavigateToSelection }: ProbabilityConf
 
           <div style={{ fontSize: 14, lineHeight: 2, fontFamily: FONT_DISPLAY }}>
             <p><strong>第一层：基础概率</strong></p>
-            <p style={{ color: PALETTE.textMuted, marginLeft: 20 }}>每张卡有个预设概率（A=2%，B=7%等）</p>
+            <p style={{ color: PALETTE.textMuted, marginLeft: 20 }}>A=2%，B/C/D/E=7%，F/G/H/I/J=14%</p>
 
             <p style={{ marginTop: 16 }}><strong>第二层：幸运卡修正（运营配置）</strong></p>
             <p style={{ color: PALETTE.textMuted, marginLeft: 20 }}>
@@ -163,7 +162,7 @@ export function ProbabilityConfigPage({ onNavigateToSelection }: ProbabilityConf
               <div>——</div>
               <div>步骤1：先把A设为幸运概率 → A=1.2%</div>
               <div>步骤2：应用降权（已有1张，下一张是第2张）→ 1.2% × 0.0005 = 0.0006%</div>
-              <div>步骤3：其他卡保持基础概率（B=7%，C/D/E=7%...）</div>
+              <div>步骤3：其他卡保持基础概率（B=7%，其他稀有/普通卡按原概率）</div>
               <div>步骤4：归一化 → 最终A的实际概率 ≈ 0.001%</div>
             </div>
           </div>
@@ -205,23 +204,22 @@ export function ProbabilityConfigPage({ onNavigateToSelection }: ProbabilityConf
             <div style={{ fontFamily: FONT_MONO }}>
               <div>步骤1 - 基础概率 & 幸运卡修正：</div>
               <div style={{ paddingLeft: 20 }}>今天是神奇日，A是幸运卡，直接设A=1.2%（不再用基础2%）</div>
-              <div style={{ paddingLeft: 20 }}>B的基础=7%，其他卡各7%</div>
+              <div style={{ paddingLeft: 20 }}>B=7%（稀有），C/D/E=7%（稀有），F/G/H/I/J=14%（普通）</div>
               <div>——</div>
               <div>步骤2 - 应用降权系数：</div>
               <div style={{ paddingLeft: 20 }}>A已有1张，下一张是第2张 → 系数=0.0005</div>
               <div style={{ paddingLeft: 20 }}>A的概率 = 1.2% × 0.0005 = 0.0006%（先设1.2%，再降权）</div>
-              <div style={{ paddingLeft: 20 }}>B只需要1张 → 系数=1.0</div>
-              <div style={{ paddingLeft: 20 }}>B的概率 = 7% × 1.0 = 7%</div>
-              <div style={{ paddingLeft: 20 }}>其他卡 = 7% × 1.0 = 7%</div>
+              <div style={{ paddingLeft: 20 }}>B只需要1张 → 系数=1.0，概率=7%</div>
+              <div style={{ paddingLeft: 20 }}>其他卡系数=1.0，按基础概率</div>
               <div>——</div>
-              <div>步骤3 - 归一化前总和 ≈ 72%（除A外9张×7% + A的0.0006%）</div>
-              <div>步骤4 - 归一化后A的概率 ≈ 0.0008%</div>
+              <div>步骤3 - 归一化前总和 ≈ 100%（具体值取决于各卡概率）</div>
+              <div>步骤4 - 归一化后最终概率按比例调整</div>
             </div>
           </div>
 
           <InfoBox type="info" title="关键理解">
             虽然今天是神奇日A是幸运卡，但玩家已有1张A，第2张A要先设为1.2%再降权×0.0005，<br/>
-            最终概率只有约0.0008%。这才是"幸运日也救不了第2张"的正确逻辑。
+            最终概率极低。这才是"幸运日也救不了第2张"的正确逻辑。
           </InfoBox>
         </StepBlock>
 
