@@ -259,20 +259,28 @@ export function CardSelectionPage({ onNavigateToConfig }: { onNavigateToConfig?:
     finally { setIsCalculating(false); }
   }, [setup]);
 
-  // 系数表格 - 只显示需要降权的卡（本周重复 或 跨周重复）
-  const renderCoefficients = (weekData: WeeklyCombo, otherWeekData: WeeklyCombo, coeffs: Record<string, CardCoefficients>) => {
+  // 系数表格
+  // 第一周表：显示本周重复 + 跨周重复（作为总览配置表）
+  // 第二周表：只显示本周重复（不显示跨周）
+  const renderCoefficients = (weekData: WeeklyCombo, otherWeekData: WeeklyCombo, coeffs: Record<string, CardCoefficients>, isFirstWeek: boolean) => {
     const needs = new Map<string, number>();
     for (const c of weekData.cards) needs.set(c, (needs.get(c) || 0) + 1);
     const otherNeeds = new Map<string, number>();
     for (const c of otherWeekData.cards) otherNeeds.set(c, (otherNeeds.get(c) || 0) + 1);
 
-    // 只显示需要降权的卡：本周重复的卡 + 跨周重复的卡
+    // 确定要显示的卡
     const cardsWithReduction = new Set<string>();
+
+    // 本周重复的卡总是显示
     for (const [card, count] of needs.entries()) {
-      if (count > 1) cardsWithReduction.add(card); // 本周重复的
+      if (count > 1) cardsWithReduction.add(card);
     }
-    for (const [card, count] of otherNeeds.entries()) {
-      if (count > 1) cardsWithReduction.add(card); // 跨周重复的
+
+    // 第一周表额外显示：跨周重复的卡
+    if (isFirstWeek) {
+      for (const [card, count] of otherNeeds.entries()) {
+        if (count > 1) cardsWithReduction.add(card);
+      }
     }
 
     const data = Array.from(cardsWithReduction).sort().map(card => {
@@ -420,14 +428,14 @@ export function CardSelectionPage({ onNavigateToConfig }: { onNavigateToConfig?:
                     <span style={{ fontSize: 15, fontWeight: 600, color: PALETTE.text, fontFamily: FONT_DISPLAY }}>第一周系数</span>
                     <span style={{ fontSize: 12, color: PALETTE.textMuted, marginLeft: 8, fontFamily: FONT_DISPLAY }}>第一周卡组降权配置</span>
                   </div>
-                  {renderCoefficients(setup.week1, setup.week2, result.week1)}
+                  {renderCoefficients(setup.week1, setup.week2, result.week1, true)}
                 </Col>
                 <Col xs={24} lg={12}>
                   <div style={{ marginBottom: 16 }}>
                     <span style={{ fontSize: 15, fontWeight: 600, color: PALETTE.text, fontFamily: FONT_DISPLAY }}>第二周系数</span>
                     <span style={{ fontSize: 12, color: PALETTE.textMuted, marginLeft: 8, fontFamily: FONT_DISPLAY }}>第二周卡组降权配置</span>
                   </div>
-                  {renderCoefficients(setup.week2, setup.week1, result.week2)}
+                  {renderCoefficients(setup.week2, setup.week1, result.week2, false)}
                 </Col>
               </Row>
             </div>
