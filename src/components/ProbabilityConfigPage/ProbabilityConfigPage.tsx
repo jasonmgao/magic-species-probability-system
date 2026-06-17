@@ -95,50 +95,40 @@ export function ProbabilityConfigPage({ onNavigateToSelection }: ProbabilityConf
 
         {/* 第一步：理解卡牌结构 */}
         <StepBlock number="一" title="理解基础卡牌结构">
-          <InfoBox type="info" title="卡牌类型与基础概率">
-            所有抽卡概率基于以下基础分布，这是系统预设的，不需要配置。
+          <InfoBox type="info" title="卡牌基础概率">
+            A=2%，B/C/D/E/F/G/H/I/J 各7%，总和72%（剩余28%为其他保底机制）。
+            不需要配置，系统固定。
           </InfoBox>
-
-          <Table size="small" dataSource={[
-            { key: '1', type: '神奇', cards: 'A', prob: '2%', count: '1张', note: '最稀有，永远需要降权（玩家只需1张）' },
-            { key: '2', type: '稀有', cards: 'B, C, D, E', prob: '7%×4=28%', count: '4张', note: '各7%，共28%' },
-            { key: '3', type: '普通', cards: 'F, G, H, I, J', prob: '7%×5=35%', count: '5张', note: '共35%' },
-            { key: '4', type: '保底', cards: '——', prob: '35%', count: '——', note: '其他保底机制（本系统不涉及）' },
-          ]} columns={[
-            { title: '类型', dataIndex: 'type', width: 80, render: (v) => <span style={{ fontFamily: FONT_DISPLAY }}>{v}</span> },
-            { title: '卡牌', dataIndex: 'cards', render: (v) => <span style={{ fontFamily: FONT_MONO }}>{v}</span> },
-            { title: '基础概率', dataIndex: 'prob', width: 120, render: (v) => <span style={{ fontFamily: FONT_DISPLAY }}>{v}</span> },
-            { title: '说明', dataIndex: 'note', render: (v) => <span style={{ fontFamily: FONT_DISPLAY }}>{v}</span> },
-          ]} pagination={false} />
         </StepBlock>
 
         {/* 第二步：理解抽签机制 */}
         <StepBlock number="二" title="理解完整抽卡流程">
-          <InfoBox type="warning" title="完整的概率计算有三层">
-            实际概率 = 基础概率 → 降权系数 → 幸运加成 → 归一化
+          <InfoBox type="warning" title="完整的概率计算有四层">
+            实际概率 = 基础概率 → 幸运卡修正 → 降权系数 → 归一化
           </InfoBox>
 
           <div style={{ fontSize: 14, lineHeight: 2, fontFamily: FONT_DISPLAY }}>
             <p><strong>第一层：基础概率</strong></p>
             <p style={{ color: PALETTE.textMuted, marginLeft: 20 }}>每张卡有个预设概率（A=2%，B=7%等）</p>
 
-            <p style={{ marginTop: 16 }}><strong>第二层：降权系数（核心机制）</strong></p>
+            <p style={{ marginTop: 16 }}><strong>第二层：幸运卡修正（运营配置）</strong></p>
             <p style={{ color: PALETTE.textMuted, marginLeft: 20 }}>
-              如果某张卡本周需要多张（如AAB需要2张A），第2张及以后的概率会被乘以"降权系数"（如0.0005）。<br/>
-              跨周的卡如果重复，第2张也要降权。<br/>
-              本系统<strong>自动计算</strong>最优降权系数。
+              每周有特定的"幸运日"，幸运卡概率<strong>直接设为1.2%</strong>（不是加成）。<br/>
+              神奇日A=1.2%，稀有日某稀有卡=1.2%，普通日某普通卡=1.2%。<br/>
+              非幸运卡保持基础概率，最后一起归一化。
             </p>
 
-            <p style={{ marginTop: 16 }}><strong>第三层：幸运日加成（运营配置）</strong></p>
+            <p style={{ marginTop: 16 }}><strong>第三层：降权系数（核心机制）</strong></p>
             <p style={{ color: PALETTE.textMuted, marginLeft: 20 }}>
-              每周有特定的"幸运日"，某几张卡会获得额外1.2%加成。<br/>
-              加成从所有卡的概率中等比扣除，保持总和100%。<br/>
-              幸运卡如果已经是第2张，仍然要受降权系数限制。
+              如果某张卡本周需要多张（如AAB需要2张A），第2张及以后乘以"降权系数"（如0.0005）。<br/>
+              跨周的卡如果重复，第2张也要降权。<br/>
+              注意：幸运卡也需先设为1.2%，再在此基础上降权。<br/>
+              本系统<strong>自动计算</strong>最优降权系数。
             </p>
 
             <p style={{ marginTop: 16 }}><strong>第四层：归一化</strong></p>
             <p style={{ color: PALETTE.textMuted, marginLeft: 20 }}>
-              所有概率加权后，总和可能不等于100%，需要按比例调整让所有卡加起来=100%。
+              所有概率计算后，总和可能不等于100%，需要按比例调整让所有卡加起来=100%。
             </p>
           </div>
         </StepBlock>
@@ -150,9 +140,9 @@ export function ProbabilityConfigPage({ onNavigateToSelection }: ProbabilityConf
           </InfoBox>
 
           <Table size="small" style={{ marginBottom: 20 }} dataSource={[
-            { key: '1', day: '神奇日', freq: '每周1天（如周一）', lucky: 'A', effect: 'A卡获得+1.2%概率' },
-            { key: '2', day: '稀有日', freq: '每周1天（如周三）', lucky: 'B/C/D/E中1张', effect: '当天随机1张稀有卡+1.2%' },
-            { key: '3', day: '普通日', freq: '每周5天', lucky: 'F/G/H/I/J中1张', effect: '当天随机1张普通卡+1.2%' },
+            { key: '1', day: '神奇日', freq: '每周1天（如周一）', lucky: 'A', effect: 'A卡概率直接设为1.2%' },
+            { key: '2', day: '稀有日', freq: '每周1天（如周三）', lucky: 'B/C/D/E中1张', effect: '当天随机1张稀有卡设为1.2%' },
+            { key: '3', day: '普通日', freq: '每周5天', lucky: 'F/G/H/I/J中1张', effect: '当天随机1张普通卡设为1.2%' },
           ]} columns={[
             { title: '日期类型', dataIndex: 'day', width: 100, render: (v) => <span style={{ fontFamily: FONT_DISPLAY }}>{v}</span> },
             { title: '频率', dataIndex: 'freq', render: (v) => <span style={{ fontFamily: FONT_DISPLAY }}>{v}</span> },
@@ -161,18 +151,20 @@ export function ProbabilityConfigPage({ onNavigateToSelection }: ProbabilityConf
           ]} pagination={false} />
 
           <InfoBox type="warning" title="重要：幸运卡也要受降权影响">
-            如果玩家已经有A的第1张，即使在神奇日（A是幸运卡），抽到第2张A的概率依然是：<br/>
-            <code style={{ fontFamily: FONT_MONO }}>2% × 0.0005 + 1.2% = 1.201%</code>（不是100%+1.2%）
+            如果玩家已经有A的第1张，即使在神奇日（A是幸运卡），抽到第2张A的概率是：<br/>
+            <code style={{ fontFamily: FONT_MONO }}>1.2% × 0.0005 = 0.0006%</code><br/>
+            先设A=1.2%，再在此基础上乘以降权系数0.0005。
           </InfoBox>
 
           <div style={{ background: PALETTE.bg, padding: 16, borderRadius: 4, fontSize: 13, lineHeight: 1.8 }}>
-            <div style={{ fontWeight: 600, marginBottom: 8, fontFamily: FONT_DISPLAY }}>幸运日计算示例</div>
+            <div style={{ fontWeight: 600, marginBottom: 8, fontFamily: FONT_DISPLAY }}>幸运日计算示例（神奇日，A是幸运卡）</div>
             <div style={{ fontFamily: FONT_MONO }}>
-              <div>场景：神奇日，玩家背包{`{A:1}`}，卡组需要AAB</div>
+              <div>场景：玩家背包{`{A:1}`}，卡组需要AAB</div>
               <div>——</div>
-              <div>步骤1：基础概率 A=2%，但第2张要降权 → 2% × 0.0005 = 0.001%</div>
-              <div>步骤2：幸运加成 +1.2% → 0.001% + 1.2% = 1.201%</div>
-              <div>步骤3：归一化（假设总和=80%）→ 1.201% ÷ 80 × 100 = 1.501%</div>
+              <div>步骤1：先把A设为幸运概率 → A=1.2%</div>
+              <div>步骤2：应用降权（已有1张，下一张是第2张）→ 1.2% × 0.0005 = 0.0006%</div>
+              <div>步骤3：其他卡保持基础概率（B=7%，C/D/E=7%...）</div>
+              <div>步骤4：归一化 → 最终A的实际概率 ≈ 0.001%</div>
             </div>
           </div>
         </StepBlock>
@@ -206,90 +198,35 @@ export function ProbabilityConfigPage({ onNavigateToSelection }: ProbabilityConf
           </div>
         </StepBlock>
 
-        {/* 第五步：后端实现指南 */}
-        <StepBlock number="五" title="后端实现指南">
-          <InfoBox type="success" title="配置流程">
-            1. 运营在本系统输入卡组 → 2. 系统输出降权系数表 → 3. 后端将系数表写入配置
-          </InfoBox>
-
-          <div style={{ fontWeight: 600, marginBottom: 12, fontFamily: FONT_DISPLAY }}>伪代码实现</div>
-          <CodeBlock>{`// coefficientTable 格式：
-// A: [1.0, 0.0005]  表示A的第1张系数1.0，第2张系数0.0005
-// B: [1.0]          表示B只有1张需求，永远系数1.0
-
-function drawCard(playerBackpack, targetCard, dayType, luckyCard) {
-  // 1. 基础概率
-  let baseProb = getBaseProbability(targetCard);  // A=2, B=7, etc.
-
-  // 2. 应用降权系数
-  const holdCount = playerBackpack[targetCard] || 0;  // 玩家已有几张
-  const nextCopyIndex = holdCount;  // 下一张是第几张（0=第1张）
-  const coeff = coefficientTable[targetCard][nextCopyIndex] || 1.0;
-  let prob = baseProb * coeff;
-
-  // 3. 应用幸运日加成
-  if (targetCard === luckyCard) {
-    // 1.2%从所有卡等比扣除，加给幸运卡
-    prob += 1.2;
-  }
-
-  // 4. 返回加权后的概率供随机抽取
-  return prob;
-}
-
-// 抽奖时调用
-function doDraw() {
-  const luckyCard = getTodayLuckyCard(dayType, weekCombo);  // 根据日期类型决定
-  const probs = {};
-  for (const card of ALL_CARDS) {
-    probs[card] = drawCard(player.backpack, card, dayType, luckyCard);
-  }
-
-  // 归一化（让总和=100%）
-  const total = sum(Object.values(probs));
-  for (const card in probs) {
-    probs[card] = (probs[card] / total) * 100;
-  }
-
-  // 按概率随机抽取
-  return weightedRandom(probs);
-}`}</CodeBlock>
-        </StepBlock>
-
-        {/* 第六步：完整示例 */}
-        <StepBlock number="六" title="完整计算示例">
+        {/* 第五步：完整示例 */}
+        <StepBlock number="五" title="完整计算示例">
           <div style={{ background: '#f8f9fa', padding: 20, borderRadius: 4, fontSize: 13, lineHeight: 2 }}>
             <div style={{ fontWeight: 600, marginBottom: 12, fontFamily: FONT_DISPLAY }}>场景：第一周 AAB，神奇日，玩家背包{`{A:1}`}</div>
             <div style={{ fontFamily: FONT_MONO }}>
-              <div>步骤1 - 基础概率：</div>
-              <div style={{ paddingLeft: 20 }}>A的基础=2%，B的基础=7%</div>
-              <div style={{ paddingLeft: 20 }}>其他卡（C-J）基础各=7%</div>
+              <div>步骤1 - 基础概率 & 幸运卡修正：</div>
+              <div style={{ paddingLeft: 20 }}>今天是神奇日，A是幸运卡，直接设A=1.2%（不再用基础2%）</div>
+              <div style={{ paddingLeft: 20 }}>B的基础=7%，其他卡各7%</div>
               <div>——</div>
               <div>步骤2 - 应用降权系数：</div>
               <div style={{ paddingLeft: 20 }}>A已有1张，下一张是第2张 → 系数=0.0005</div>
-              <div style={{ paddingLeft: 20 }}>A的概率 = 2% × 0.0005 = 0.001%</div>
+              <div style={{ paddingLeft: 20 }}>A的概率 = 1.2% × 0.0005 = 0.0006%（先设1.2%，再降权）</div>
               <div style={{ paddingLeft: 20 }}>B只需要1张 → 系数=1.0</div>
               <div style={{ paddingLeft: 20 }}>B的概率 = 7% × 1.0 = 7%</div>
               <div style={{ paddingLeft: 20 }}>其他卡 = 7% × 1.0 = 7%</div>
               <div>——</div>
-              <div>步骤3 - 幸运日加成：</div>
-              <div style={{ paddingLeft: 20 }}>今天是神奇日，A是幸运卡</div>
-              <div style={{ paddingLeft: 20 }}>A的概率 = 0.001% + 1.2% = 1.201%</div>
-              <div style={{ paddingLeft: 20 }}>其他卡各扣除 (1.2% ÷ 9张 = 0.133%)</div>
-              <div>——</div>
-              <div>步骤4 - 归一化前总和 ≈ 98%</div>
-              <div>步骤5 - 归一化后A的概率 ≈ 1.226%</div>
+              <div>步骤3 - 归一化前总和 ≈ 72%（除A外9张×7% + A的0.0006%）</div>
+              <div>步骤4 - 归一化后A的概率 ≈ 0.0008%</div>
             </div>
           </div>
 
-          <InfoBox type="info" title="结论">
-            虽然今天是神奇日，A是幸运卡，但因为玩家已经有1张A，第2张A依然有降权，<br/>
-            最终抽到A的概率只有约1.2%，而不是100%+1.2%。这就是控制完成率的关键。
+          <InfoBox type="info" title="关键理解">
+            虽然今天是神奇日A是幸运卡，但玩家已有1张A，第2张A要先设为1.2%再降权×0.0005，<br/>
+            最终概率只有约0.0008%。这才是"幸运日也救不了第2张"的正确逻辑。
           </InfoBox>
         </StepBlock>
 
         {/* 常见问题 */}
-        <StepBlock number="七" title="常见问题">
+        <StepBlock number="六" title="常见问题">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             <div>
               <span style={{ fontSize: 15, fontWeight: 600, color: PALETTE.text, display: 'block', marginBottom: 8, fontFamily: FONT_DISPLAY }}>问：神奇卡A永远只需要1张，为什么系数表里还有A？</span>

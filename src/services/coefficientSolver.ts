@@ -190,7 +190,7 @@ function drawOneCard(
     weightedProbs[card] = getBaseProb(card) * coeff;
   }
 
-  // 幸运卡处理
+  // 幸运卡处理 (V7.0：幸运卡概率直接设为1.2%，然后应用降权系数)
   if (luckyCard) {
     const luckyIsCurrent = currentCards.has(luckyCard);
     const luckyHave = backpack[luckyCard] || 0;
@@ -204,23 +204,19 @@ function drawOneCard(
         luckyCoeff = shouldReduceNextCopy(currentCombo, backpack, luckyCard)
           ? (luckyCoeffArray[1] ?? 0.01)
           : 1.0;
+      } else if (crossCards.has(luckyCard)) {
+        // 跨周且已有1张+，需要降权
+        luckyCoeff = shouldReduceNextCopy(crossCombo, backpack, luckyCard)
+          ? (luckyCoeffArray[1] ?? 0.001)
+          : 1.0;
       } else {
         luckyCoeff = 1.0;
       }
 
-      const luckyBonus = LUCKY_FIXED_PROB;
-      const currentTotal = Object.values(weightedProbs).reduce((a, b) => a + b, 0);
-
-      if (currentTotal > 0) {
-        const deductionRatio = luckyBonus / currentTotal;
-        for (const card of ALL_CARDS) {
-          if (card === luckyCard) {
-            weightedProbs[card] = weightedProbs[card] * luckyCoeff + luckyBonus;
-          } else {
-            weightedProbs[card] *= (1 - deductionRatio);
-          }
-        }
-      }
+      // V7.0新逻辑：幸运卡概率直接设为1.2%，然后乘以降权系数
+      // 非幸运卡保持原概率，最后整体归一化
+      const luckyFixedProb = LUCKY_FIXED_PROB; // 1.2%
+      weightedProbs[luckyCard] = luckyFixedProb * luckyCoeff;
     }
   }
 
