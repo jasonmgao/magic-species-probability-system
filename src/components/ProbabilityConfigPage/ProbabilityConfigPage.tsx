@@ -1,5 +1,5 @@
 /**
- * 使用指南 - 全部使用中宋字体
+ * 使用指南 - 完整版：从0到1教会研发概率配置
  */
 
 import { Table, Tag, Divider } from 'antd';
@@ -10,14 +10,14 @@ const FONT_MONO = "'IBM Plex Mono', 'SF Mono', monospace";
 const PALETTE = {
   bg: '#F7F9F7', surface: '#FFFFFF', text: '#1a1a2e', textMuted: '#6b6b7b',
   border: '#e5e7eb', borderLight: '#f0f0f2', accent: '#511B3A',
-  accentLight: '#f4f0f3', success: '#3d6b4a',
+  accentLight: '#f4f0f3', success: '#3d6b4a', warning: '#d4a72c',
 };
 
 interface ProbabilityConfigPageProps {
   onNavigateToSelection?: () => void;
 }
 
-// 顶部导航栏
+// 顶部导航
 function TopNav({ onNavigateToSelection, title }: { onNavigateToSelection?: () => void; title: string }) {
   return (
     <div style={{
@@ -31,22 +31,47 @@ function TopNav({ onNavigateToSelection, title }: { onNavigateToSelection?: () =
       <div style={{ fontSize: 18, fontWeight: 600, color: PALETTE.text, fontFamily: FONT_DISPLAY }}>
         {title}
       </div>
-      <div>
-        <button
-          onClick={onNavigateToSelection}
-          style={{
-            color: PALETTE.textMuted,
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            fontFamily: FONT_DISPLAY,
-            fontSize: 14,
-            padding: '8px 16px',
-          }}
-        >
-          《 返回配置
-        </button>
+      <button onClick={onNavigateToSelection} style={{ color: PALETTE.textMuted, background: 'none', border: 'none', cursor: 'pointer', fontFamily: FONT_DISPLAY, fontSize: 14 }}>
+        《 返回配置
+      </button>
+    </div>
+  );
+}
+
+// 步骤区块
+function StepBlock({ number, title, children }: { number: string; title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ background: PALETTE.surface, borderRadius: 4, border: `1px solid ${PALETTE.border}`, padding: '28px 32px', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+        <div style={{ width: 32, height: 32, borderRadius: '50%', background: PALETTE.accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontFamily: FONT_DISPLAY }}>{number}</div>
+        <span style={{ fontSize: 18, fontWeight: 600, color: PALETTE.text, fontFamily: FONT_DISPLAY }}>{title}</span>
       </div>
+      {children}
+    </div>
+  );
+}
+
+// 信息框
+function InfoBox({ type, title, children }: { type: 'info' | 'warning' | 'success'; title: string; children: React.ReactNode }) {
+  const colors = {
+    info: { bg: PALETTE.accentLight, border: PALETTE.accent, icon: PALETTE.accent },
+    warning: { bg: '#fff8e6', border: PALETTE.warning, icon: PALETTE.warning },
+    success: { bg: '#e8f5e9', border: PALETTE.success, icon: PALETTE.success },
+  };
+  const c = colors[type];
+  return (
+    <div style={{ padding: '16px 20px', background: c.bg, borderLeft: `3px solid ${c.border}`, borderRadius: '0 4px 4px 0', marginBottom: 20 }}>
+      <span style={{ color: c.icon, fontSize: 13, display: 'block', marginBottom: 8, fontWeight: 600, fontFamily: FONT_DISPLAY }}>{title}</span>
+      <div style={{ fontSize: 13, color: PALETTE.text, lineHeight: 1.7, fontFamily: FONT_DISPLAY }}>{children}</div>
+    </div>
+  );
+}
+
+// 代码块
+function CodeBlock({ children }: { children: string }) {
+  return (
+    <div style={{ background: '#f8f9fa', padding: 16, borderRadius: 4, fontFamily: FONT_MONO, fontSize: 12, lineHeight: 1.6, overflow: 'auto' }}>
+      <pre style={{ margin: 0 }}>{children}</pre>
     </div>
   );
 }
@@ -54,222 +79,240 @@ function TopNav({ onNavigateToSelection, title }: { onNavigateToSelection?: () =
 export function ProbabilityConfigPage({ onNavigateToSelection }: ProbabilityConfigPageProps) {
   return (
     <div style={{ minHeight: '100vh', background: PALETTE.bg, fontFamily: FONT_DISPLAY }}>
-      {/* 顶部导航栏 */}
       <TopNav onNavigateToSelection={onNavigateToSelection} title="使用指南" />
 
       {/* 标题区 */}
       <div style={{ padding: '32px 24px', textAlign: 'center' }}>
         <h1 style={{ margin: 0, fontSize: 32, fontWeight: 700, color: PALETTE.text, letterSpacing: '0.08em', fontFamily: FONT_DISPLAY }}>
-          五分钟上手概率系数调控
+          从零开始配置概率系统
         </h1>
         <p style={{ margin: '12px 0 0', fontSize: 15, color: PALETTE.textMuted, fontFamily: FONT_DISPLAY }}>
-          理解降权系数机制与概率计算原理
+          完整机制说明与技术实现指南
         </p>
       </div>
 
-      <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 24px 48px' }}>
+      <div style={{ maxWidth: 1000, margin: '0 auto', padding: '0 24px 48px' }}>
 
-        {/* 第一步 */}
-        <div style={{ background: PALETTE.surface, borderRadius: 4, border: `1px solid ${PALETTE.border}`, padding: '28px 32px', marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-            <div style={{ width: 32, height: 32, borderRadius: '50%', background: PALETTE.accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontFamily: FONT_DISPLAY }}>一</div>
-            <span style={{ fontSize: 18, fontWeight: 600, color: PALETTE.text, fontFamily: FONT_DISPLAY }}>这个系统是做什么的？</span>
-          </div>
-
-          <div style={{ fontSize: 14, color: PALETTE.text, lineHeight: 1.8, fontFamily: FONT_DISPLAY }}>
-            <p style={{ marginBottom: 16 }}>
-              运营想做一个两周的集卡活动，要求<strong>全服只有约4%的玩家能完成</strong>。但直接抽卡的话：
-            </p>
-            <ul style={{ paddingLeft: 24, marginBottom: 16 }}>
-              <li>如果卡牌太简单 → 完成率90%，玩家觉得没挑战</li>
-              <li>如果卡牌太难 → 完成率0.1%，玩家觉得被骗</li>
-            </ul>
-            <p>
-              这个系统帮你<strong>自动算出"降权系数"</strong>——当玩家已经有一张卡后，再抽第二张的概率会被乘以一个很小的数（比如0.0005），从而把完成率精准控制在4%左右。
-            </p>
-          </div>
-        </div>
-
-        {/* 第二步 */}
-        <div style={{ background: PALETTE.surface, borderRadius: 4, border: `1px solid ${PALETTE.border}`, padding: '28px 32px', marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-            <div style={{ width: 32, height: 32, borderRadius: '50%', background: PALETTE.accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontFamily: FONT_DISPLAY }}>二</div>
-            <span style={{ fontSize: 18, fontWeight: 600, color: PALETTE.text, fontFamily: FONT_DISPLAY }}>操作流程（三步走）</span>
-          </div>
-
-          <div style={{ marginTop: 16, fontFamily: FONT_DISPLAY }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <div style={{ width: 24, height: 24, borderRadius: '50%', background: PALETTE.accentLight, color: PALETTE.accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>1</div>
-                <div>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>配置卡组</div>
-                  <div style={{ color: PALETTE.textMuted, fontSize: 13, lineHeight: 1.6 }}>选择第一周的卡（比如 AAB）和第二周的卡（比如 CCD）。每张卡有基础概率：神奇卡(A) 2%，稀有卡(B-E) 各7%，普通卡(F-J) 各7%。</div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <div style={{ width: 24, height: 24, borderRadius: '50%', background: PALETTE.accentLight, color: PALETTE.accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>2</div>
-                <div>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>点击"开始求解"</div>
-                  <div style={{ color: PALETTE.textMuted, fontSize: 13, lineHeight: 1.6 }}>系统自动跑蒙特卡洛模拟（约200次试验），尝试不同的降权系数组合。等待约10-30秒，系统会显示"已收敛"或结果。</div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <div style={{ width: 24, height: 24, borderRadius: '50%', background: PALETTE.accentLight, color: PALETTE.accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>3</div>
-                <div>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>查看系数并配置</div>
-                  <div style={{ color: PALETTE.textMuted, fontSize: 13, lineHeight: 1.6 }}>系统给出每张卡的降权系数表（第2张起应用）。把这些系数填到游戏配置里，就完成了！</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* 第三步 */}
-        <div style={{ background: PALETTE.surface, borderRadius: 4, border: `1px solid ${PALETTE.border}`, padding: '28px 32px', marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-            <div style={{ width: 32, height: 32, borderRadius: '50%', background: PALETTE.accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontFamily: FONT_DISPLAY }}>三</div>
-            <span style={{ fontSize: 18, fontWeight: 600, color: PALETTE.text, fontFamily: FONT_DISPLAY }}>核心原理：什么是"降权系数"？</span>
-          </div>
-
-          <div style={{ background: PALETTE.accentLight, padding: 20, borderRadius: 4, marginBottom: 20 }}>
-            <p style={{ margin: 0, fontSize: 14, color: PALETTE.accent, fontWeight: 500, fontFamily: FONT_DISPLAY }}>
-              核心规则：如果一张卡需要抽多张（比如HHF需要2张H），玩家抽第1张时概率正常，抽第2张起概率会被乘以"降权系数"（比如0.0005）。
-            </p>
-          </div>
+        {/* 第一步：理解卡牌结构 */}
+        <StepBlock number="一" title="理解基础卡牌结构">
+          <InfoBox type="info" title="卡牌类型与基础概率">
+            所有抽卡概率基于以下基础分布，这是系统预设的，不需要配置。
+          </InfoBox>
 
           <Table size="small" dataSource={[
-            { key: '1', hold: '0张', next: '第1张', reduce: false, desc: '正常概率，不降权' },
-            { key: '2', hold: '1张', next: '第2张', reduce: true, desc: '概率 × 0.00001~0.05，极难抽到' },
-            { key: '3', hold: '2张', next: '第3张', reduce: true, desc: '继续用极低系数' },
+            { key: '1', type: '神奇', cards: 'A', prob: '2%', count: '1张', note: '最稀有，永远需要降权（玩家只需1张）' },
+            { key: '2', type: '稀有', cards: 'B, C, D, E', prob: '7%×4=28%', count: '4张', note: '各7%，共28%' },
+            { key: '3', type: '普通', cards: 'F, G, H, I, J', prob: '7%×5=35%', count: '5张', note: '共35%' },
+            { key: '4', type: '保底', cards: '——', prob: '35%', count: '——', note: '其他保底机制（本系统不涉及）' },
           ]} columns={[
-            { title: '当前持有', dataIndex: 'hold', width: 100, render: (v) => <span style={{ fontFamily: FONT_DISPLAY }}>{v}</span> },
-            { title: '下一个副本', dataIndex: 'next', width: 100, render: (v) => <span style={{ fontFamily: FONT_DISPLAY }}>{v}</span> },
-            { title: '是否降权', dataIndex: 'reduce', width: 100, render: (v) => v ? <Tag color="error" style={{ fontFamily: FONT_DISPLAY }}>降权</Tag> : <Tag color="success" style={{ fontFamily: FONT_DISPLAY }}>正常</Tag> },
+            { title: '类型', dataIndex: 'type', width: 80, render: (v) => <span style={{ fontFamily: FONT_DISPLAY }}>{v}</span> },
+            { title: '卡牌', dataIndex: 'cards', render: (v) => <span style={{ fontFamily: FONT_MONO }}>{v}</span> },
+            { title: '基础概率', dataIndex: 'prob', width: 120, render: (v) => <span style={{ fontFamily: FONT_DISPLAY }}>{v}</span> },
+            { title: '说明', dataIndex: 'note', render: (v) => <span style={{ fontFamily: FONT_DISPLAY }}>{v}</span> },
+          ]} pagination={false} />
+        </StepBlock>
+
+        {/* 第二步：理解抽签机制 */}
+        <StepBlock number="二" title="理解完整抽卡流程">
+          <InfoBox type="warning" title="完整的概率计算有三层">
+            实际概率 = 基础概率 → 降权系数 → 幸运加成 → 归一化
+          </InfoBox>
+
+          <div style={{ fontSize: 14, lineHeight: 2, fontFamily: FONT_DISPLAY }}>
+            <p><strong>第一层：基础概率</strong></p>
+            <p style={{ color: PALETTE.textMuted, marginLeft: 20 }}>每张卡有个预设概率（A=2%，B=7%等）</p>
+
+            <p style={{ marginTop: 16 }}><strong>第二层：降权系数（核心机制）</strong></p>
+            <p style={{ color: PALETTE.textMuted, marginLeft: 20 }}>
+              如果某张卡本周需要多张（如AAB需要2张A），第2张及以后的概率会被乘以"降权系数"（如0.0005）。<br/>
+              跨周的卡如果重复，第2张也要降权。<br/>
+              本系统<strong>自动计算</strong>最优降权系数。
+            </p>
+
+            <p style={{ marginTop: 16 }}><strong>第三层：幸运日加成（运营配置）</strong></p>
+            <p style={{ color: PALETTE.textMuted, marginLeft: 20 }}>
+              每周有特定的"幸运日"，某几张卡会获得额外1.2%加成。<br/>
+              加成从所有卡的概率中等比扣除，保持总和100%。<br/>
+              幸运卡如果已经是第2张，仍然要受降权系数限制。
+            </p>
+
+            <p style={{ marginTop: 16 }}><strong>第四层：归一化</strong></p>
+            <p style={{ color: PALETTE.textMuted, marginLeft: 20 }}>
+              所有概率加权后，总和可能不等于100%，需要按比例调整让所有卡加起来=100%。
+            </p>
+          </div>
+        </StepBlock>
+
+        {/* 第三步：幸运卡机制详解 */}
+        <StepBlock number="三" title="幸运卡机制（运营配置）">
+          <InfoBox type="success" title="幸运日是固定的轮换">
+            幸运日不是随机，而是固定轮换。运营只需要确认这个机制，不需要每次配置。
+          </InfoBox>
+
+          <Table size="small" style={{ marginBottom: 20 }} dataSource={[
+            { key: '1', day: '神奇日', freq: '每周1天（如周一）', lucky: 'A', effect: 'A卡获得+1.2%概率' },
+            { key: '2', day: '稀有日', freq: '每周1天（如周三）', lucky: 'B/C/D/E中1张', effect: '当天随机1张稀有卡+1.2%' },
+            { key: '3', day: '普通日', freq: '每周5天', lucky: 'F/G/H/I/J中1张', effect: '当天随机1张普通卡+1.2%' },
+          ]} columns={[
+            { title: '日期类型', dataIndex: 'day', width: 100, render: (v) => <span style={{ fontFamily: FONT_DISPLAY }}>{v}</span> },
+            { title: '频率', dataIndex: 'freq', render: (v) => <span style={{ fontFamily: FONT_DISPLAY }}>{v}</span> },
+            { title: '幸运卡', dataIndex: 'lucky', width: 120, render: (v) => <span style={{ fontFamily: FONT_MONO }}>{v}</span> },
+            { title: '效果', dataIndex: 'effect', render: (v) => <span style={{ fontFamily: FONT_DISPLAY }}>{v}</span> },
+          ]} pagination={false} />
+
+          <InfoBox type="warning" title="重要：幸运卡也要受降权影响">
+            如果玩家已经有A的第1张，即使在神奇日（A是幸运卡），抽到第2张A的概率依然是：<br/>
+            <code style={{ fontFamily: FONT_MONO }}>2% × 0.0005 + 1.2% = 1.201%</code>（不是100%+1.2%）
+          </InfoBox>
+
+          <div style={{ background: PALETTE.bg, padding: 16, borderRadius: 4, fontSize: 13, lineHeight: 1.8 }}>
+            <div style={{ fontWeight: 600, marginBottom: 8, fontFamily: FONT_DISPLAY }}>幸运日计算示例</div>
+            <div style={{ fontFamily: FONT_MONO }}>
+              <div>场景：神奇日，玩家背包{`{A:1}`}，卡组需要AAB</div>
+              <div>——</div>
+              <div>步骤1：基础概率 A=2%，但第2张要降权 → 2% × 0.0005 = 0.001%</div>
+              <div>步骤2：幸运加成 +1.2% → 0.001% + 1.2% = 1.201%</div>
+              <div>步骤3：归一化（假设总和=80%）→ 1.201% ÷ 80 × 100 = 1.501%</div>
+            </div>
+          </div>
+        </StepBlock>
+
+        {/* 第四步：降权系数详解 */}
+        <StepBlock number="四" title="降权系数机制（本系统自动计算）">
+          <InfoBox type="info" title="怎么判断是否降权？">
+            看"下一张是第几张"，不是看"已经有多少张"。
+          </InfoBox>
+
+          <Table size="small" dataSource={[
+            { key: '1', hold: '没有（0张）', next: '第1张', reduce: '否', coeff: '1.0', desc: '正常概率' },
+            { key: '2', hold: '有1张', next: '第2张', reduce: '是', coeff: '0.00001~0.05', desc: '极难抽到' },
+            { key: '3', hold: '有2张', next: '第3张', reduce: '是', coeff: '0.00001~0.05', desc: '继续极难' },
+          ]} columns={[
+            { title: '当前持有', dataIndex: 'hold', width: 120, render: (v) => <span style={{ fontFamily: FONT_DISPLAY }}>{v}</span> },
+            { title: '下一张', dataIndex: 'next', width: 80, render: (v) => <span style={{ fontFamily: FONT_DISPLAY }}>{v}</span> },
+            { title: '是否降权', dataIndex: 'reduce', width: 90, render: (v) => v === '是' ? <Tag color="error" style={{ fontFamily: FONT_DISPLAY }}>降权</Tag> : <Tag color="success" style={{ fontFamily: FONT_DISPLAY }}>正常</Tag> },
+            { title: '系数', dataIndex: 'coeff', width: 120, render: (v) => <span style={{ fontFamily: FONT_MONO }}>{v}</span> },
             { title: '说明', dataIndex: 'desc', render: (v) => <span style={{ fontFamily: FONT_DISPLAY }}>{v}</span> },
           ]} pagination={false} />
-        </div>
 
-        {/* 第四步 */}
-        <div style={{ background: PALETTE.surface, borderRadius: 4, border: `1px solid ${PALETTE.border}`, padding: '28px 32px', marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-            <div style={{ width: 32, height: 32, borderRadius: '50%', background: PALETTE.accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontFamily: FONT_DISPLAY }}>四</div>
-            <span style={{ fontSize: 18, fontWeight: 600, color: PALETTE.text, fontFamily: FONT_DISPLAY }}>概率计算示例（重点理解）</span>
+          <Divider style={{ margin: '20px 0', borderColor: PALETTE.borderLight }} />
+
+          <div style={{ fontSize: 14, lineHeight: 1.8, fontFamily: FONT_DISPLAY }}>
+            <p><strong>跨周压制</strong></p>
+            <ul style={{ color: PALETTE.textMuted, marginTop: 8 }}>
+              <li>首张跨周卡：正常概率（让玩家有机会获得）</li>
+              <li>第2张跨周卡：同样降权（防止第一周囤太多）</li>
+            </ul>
           </div>
+        </StepBlock>
 
-          <div style={{ background: '#f8f9fa', padding: 16, borderRadius: 4, marginBottom: 20 }}>
-            <div style={{ fontSize: 13, color: PALETTE.textMuted, marginBottom: 8, fontFamily: FONT_DISPLAY }}>场景设定</div>
-            <div style={{ fontSize: 14, color: PALETTE.text, fontFamily: FONT_DISPLAY }}>
-              第一周卡组：<strong>HHF</strong>（需要2张H，1张F）<br/>
-              当前背包：<strong>{'{H:1, F:1}'}</strong>（已经有了1张H和1张F，差1张H完成）<br/>
-              降权系数：<strong>0.0005</strong>（系统计算得出）
+        {/* 第五步：后端实现指南 */}
+        <StepBlock number="五" title="后端实现指南">
+          <InfoBox type="success" title="配置流程">
+            1. 运营在本系统输入卡组 → 2. 系统输出降权系数表 → 3. 后端将系数表写入配置
+          </InfoBox>
+
+          <div style={{ fontWeight: 600, marginBottom: 12, fontFamily: FONT_DISPLAY }}>伪代码实现</div>
+          <CodeBlock>{`// coefficientTable 格式：
+// A: [1.0, 0.0005]  表示A的第1张系数1.0，第2张系数0.0005
+// B: [1.0]          表示B只有1张需求，永远系数1.0
+
+function drawCard(playerBackpack, targetCard, dayType, luckyCard) {
+  // 1. 基础概率
+  let baseProb = getBaseProbability(targetCard);  // A=2, B=7, etc.
+
+  // 2. 应用降权系数
+  const holdCount = playerBackpack[targetCard] || 0;  // 玩家已有几张
+  const nextCopyIndex = holdCount;  // 下一张是第几张（0=第1张）
+  const coeff = coefficientTable[targetCard][nextCopyIndex] || 1.0;
+  let prob = baseProb * coeff;
+
+  // 3. 应用幸运日加成
+  if (targetCard === luckyCard) {
+    // 1.2%从所有卡等比扣除，加给幸运卡
+    prob += 1.2;
+  }
+
+  // 4. 返回加权后的概率供随机抽取
+  return prob;
+}
+
+// 抽奖时调用
+function doDraw() {
+  const luckyCard = getTodayLuckyCard(dayType, weekCombo);  // 根据日期类型决定
+  const probs = {};
+  for (const card of ALL_CARDS) {
+    probs[card] = drawCard(player.backpack, card, dayType, luckyCard);
+  }
+
+  // 归一化（让总和=100%）
+  const total = sum(Object.values(probs));
+  for (const card in probs) {
+    probs[card] = (probs[card] / total) * 100;
+  }
+
+  // 按概率随机抽取
+  return weightedRandom(probs);
+}`}</CodeBlock>
+        </StepBlock>
+
+        {/* 第六步：完整示例 */}
+        <StepBlock number="六" title="完整计算示例">
+          <div style={{ background: '#f8f9fa', padding: 20, borderRadius: 4, fontSize: 13, lineHeight: 2 }}>
+            <div style={{ fontWeight: 600, marginBottom: 12, fontFamily: FONT_DISPLAY }}>场景：第一周 AAB，神奇日，玩家背包{`{A:1}`}</div>
+            <div style={{ fontFamily: FONT_MONO }}>
+              <div>步骤1 - 基础概率：</div>
+              <div style={{ paddingLeft: 20 }}>A的基础=2%，B的基础=7%</div>
+              <div style={{ paddingLeft: 20 }}>其他卡（C-J）基础各=7%</div>
+              <div>——</div>
+              <div>步骤2 - 应用降权系数：</div>
+              <div style={{ paddingLeft: 20 }}>A已有1张，下一张是第2张 → 系数=0.0005</div>
+              <div style={{ paddingLeft: 20 }}>A的概率 = 2% × 0.0005 = 0.001%</div>
+              <div style={{ paddingLeft: 20 }}>B只需要1张 → 系数=1.0</div>
+              <div style={{ paddingLeft: 20 }}>B的概率 = 7% × 1.0 = 7%</div>
+              <div style={{ paddingLeft: 20 }}>其他卡 = 7% × 1.0 = 7%</div>
+              <div>——</div>
+              <div>步骤3 - 幸运日加成：</div>
+              <div style={{ paddingLeft: 20 }}>今天是神奇日，A是幸运卡</div>
+              <div style={{ paddingLeft: 20 }}>A的概率 = 0.001% + 1.2% = 1.201%</div>
+              <div style={{ paddingLeft: 20 }}>其他卡各扣除 (1.2% ÷ 9张 = 0.133%)</div>
+              <div>——</div>
+              <div>步骤4 - 归一化前总和 ≈ 98%</div>
+              <div>步骤5 - 归一化后A的概率 ≈ 1.226%</div>
             </div>
           </div>
 
-          <span style={{ fontSize: 15, fontWeight: 600, color: PALETTE.text, display: 'block', marginBottom: 12, fontFamily: FONT_DISPLAY }}>步骤一：计算原始加权概率</span>
-          <div style={{ padding: 16, background: PALETTE.bg, borderRadius: 4, fontSize: 13, lineHeight: 2, marginBottom: 20, fontFamily: FONT_MONO }}>
-            <div>H（当前持有1张，下一个是第2张→降权）: 14% × 0.0005 = <span style={{ color: PALETTE.accent, fontWeight: 600 }}>0.007%</span></div>
-            <div>F（当前持有1张，只需要1张→不用降权）: 14% × 1 = 14%</div>
-            <div>I（第二周卡，首次抽取→不用降权）: 14% × 1 = 14%</div>
-            <div>A（背景卡，无特殊需求）: 2% × 1 = 2%</div>
-            <div>B/C/D/E/G/J（其他背景卡）: 各 × 1 = 正常概率</div>
-            <Divider style={{ margin: '12px 0', borderColor: PALETTE.border }} />
-            <div>所有卡原始概率之和 = 99.907%（接近100%，因为H被压低了一点点）</div>
-          </div>
+          <InfoBox type="info" title="结论">
+            虽然今天是神奇日，A是幸运卡，但因为玩家已经有1张A，第2张A依然有降权，<br/>
+            最终抽到A的概率只有约1.2%，而不是100%+1.2%。这就是控制完成率的关键。
+          </InfoBox>
+        </StepBlock>
 
-          <span style={{ fontSize: 15, fontWeight: 600, color: PALETTE.text, display: 'block', marginBottom: 12, fontFamily: FONT_DISPLAY }}>步骤二：归一化（让总和精确等于100%）</span>
-          <div style={{ padding: 16, background: PALETTE.bg, borderRadius: 4, fontSize: 13, lineHeight: 2, marginBottom: 20, fontFamily: FONT_MONO }}>
-            <div style={{ color: PALETTE.textMuted, marginBottom: 8, fontFamily: FONT_DISPLAY }}>公式：最终概率 = 原始概率 ÷ 原始总和 × 100%</div>
-            <div>H最终 = 0.007 ÷ 99.907 × 100% = <span style={{ color: PALETTE.accent, fontWeight: 600 }}>0.007%</span>（基本不变，本来就很小）</div>
-            <div>F最终 = 14 ÷ 99.907 × 100% = 14.013%（略微上升）</div>
-            <div>A最终 = 2 ÷ 99.907 × 100% = 2.002%（略微上升）</div>
-          </div>
-
-          <div style={{ background: PALETTE.success + '15', padding: 16, borderRadius: 4, borderLeft: `3px solid ${PALETTE.success}` }}>
-            <span style={{ color: PALETTE.success, fontWeight: 600, fontSize: 14, fontFamily: FONT_DISPLAY }}>关键结论</span>
-            <p style={{ margin: '8px 0 0', color: PALETTE.text, lineHeight: 1.8, fontFamily: FONT_DISPLAY }}>
-              H的概率从14%骤降到0.007%（降幅2000倍），而玩家背包里已经有H和F了，只差这一张H就完成第一周。<br/>
-              但这时候抽到H的概率几乎为0，只能一直抽一直抽，靠运气慢慢积累。<br/>
-              <strong>这就是把完成率压到4%的核心机制。</strong>
-            </p>
-          </div>
-        </div>
-
-        {/* 第五步 */}
-        <div style={{ background: PALETTE.surface, borderRadius: 4, border: `1px solid ${PALETTE.border}`, padding: '28px 32px', marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-            <div style={{ width: 32, height: 32, borderRadius: '50%', background: PALETTE.accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontFamily: FONT_DISPLAY }}>五</div>
-            <span style={{ fontSize: 18, fontWeight: 600, color: PALETTE.text, fontFamily: FONT_DISPLAY }}>拿到系数后怎么配到游戏里？</span>
-          </div>
-
-          <div style={{ fontSize: 14, color: PALETTE.text, lineHeight: 1.8, fontFamily: FONT_DISPLAY }}>
-            <p style={{ marginBottom: 16 }}>
-              系统会给出类似这样的系数表：
-            </p>
-
-            <div style={{ background: PALETTE.bg, padding: 16, borderRadius: 4, marginBottom: 20, fontFamily: FONT_MONO, fontSize: 13 }}>
-              <div style={{ color: PALETTE.textMuted, marginBottom: 8, fontFamily: FONT_DISPLAY }}>第一周系数</div>
-              <div>H: 第1张=1.0, 第2张=0.0005</div>
-              <div>F: 第1张=1.0</div>
-              <div>A: 第1张=1.0, 第2张=0.0005, 第3张=0.0005</div>
-            </div>
-
-            <p style={{ marginBottom: 16 }}>
-              你需要把这张表交给<strong>后端开发</strong>，让他们在抽卡逻辑里加入这个系数判断：
-            </p>
-
-            <div style={{ background: '#f8f9fa', padding: 20, borderRadius: 4, fontFamily: FONT_MONO, fontSize: 12, lineHeight: 1.6 }}>
-              <div style={{ color: PALETTE.textMuted, fontFamily: FONT_DISPLAY }}>伪代码：</div>
-              <div style={{ marginTop: 8 }}>
-                <div><span style={{ color: '#0066cc' }}>function</span> <span style={{ color: PALETTE.accent }}>drawCard</span>(playerBackpack, targetCard) {'{'}</div>
-                <div style={{ paddingLeft: 16 }}>baseProb = getBaseProbability(targetCard) <span style={{ color: PALETTE.textMuted }}>// H=14%</span></div>
-                <div style={{ paddingLeft: 16 }}>holdCount = playerBackpack[targetCard] <span style={{ color: PALETTE.textMuted }}>// 玩家有几张</span></div>
-                <div style={{ paddingLeft: 16 }}>nextCopyIndex = holdCount <span style={{ color: PALETTE.textMuted }}>// 下一个是第几张（0=第1张）</span></div>
-                <div style={{ paddingLeft: 16 }}>coeff = coefficientTable[targetCard][nextCopyIndex] <span style={{ color: PALETTE.textMuted }}>// 查系数表</span></div>
-                <div style={{ paddingLeft: 16 }}>finalProb = baseProb * coeff <span style={{ color: PALETTE.textMuted }}>// H第2张=14%*0.0005</span></div>
-                <div style={{ paddingLeft: 16 }}><span style={{ color: '#0066cc' }}>return</span> weightedRandomDraw(finalProb)</div>
-                <div>{'}'}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* 第六步 */}
-        <div style={{ background: PALETTE.surface, borderRadius: 4, border: `1px solid ${PALETTE.border}`, padding: '28px 32px', marginBottom: 24 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-            <div style={{ width: 32, height: 32, borderRadius: '50%', background: PALETTE.accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontFamily: FONT_DISPLAY }}>六</div>
-            <span style={{ fontSize: 18, fontWeight: 600, color: PALETTE.text, fontFamily: FONT_DISPLAY }}>常见问题</span>
-          </div>
-
+        {/* 常见问题 */}
+        <StepBlock number="七" title="常见问题">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             <div>
-              <span style={{ fontSize: 15, fontWeight: 600, color: PALETTE.text, display: 'block', marginBottom: 8, fontFamily: FONT_DISPLAY }}>问：为什么3张卡的系数比5张卡低那么多？</span>
+              <span style={{ fontSize: 15, fontWeight: 600, color: PALETTE.text, display: 'block', marginBottom: 8, fontFamily: FONT_DISPLAY }}>问：神奇卡A永远只需要1张，为什么系数表里还有A？</span>
               <span style={{ fontSize: 13, color: PALETTE.textMuted, lineHeight: 1.7, fontFamily: FONT_DISPLAY }}>
-                3张卡组（如HHF）只有3个格子要填满，玩家有28次抽奖机会。如果不把系数压得极低（如0.0005），完成率会高达90%。5张卡有更多格子要填，自然更难完成，系数可以宽松一些。
+                虽然卡组只需要1张A，但跨周时（如第二周卡组也有A），A可能成为"跨周卡"需要第2张。所以系数表里要预留A的第2张系数。
               </span>
             </div>
             <Divider style={{ margin: 0, borderColor: PALETTE.borderLight }} />
             <div>
-              <span style={{ fontSize: 15, fontWeight: 600, color: PALETTE.text, display: 'block', marginBottom: 8, fontFamily: FONT_DISPLAY }}>问：系数0.0005是什么意思？玩家能感知到吗？</span>
+              <span style={{ fontSize: 15, fontWeight: 600, color: PALETTE.text, display: 'block', marginBottom: 8, fontFamily: FONT_DISPLAY }}>问：完成率达不到4%怎么办？</span>
               <span style={{ fontSize: 13, color: PALETTE.textMuted, lineHeight: 1.7, fontFamily: FONT_DISPLAY }}>
-                意思是抽到第2张H的概率是正常情况下的0.05%（二百分之一）。玩家可能会觉得"怎么老是抽不到最后一张"，但不会觉得不正常（本来就是随机抽卡）。设计目的就是让他感觉"差一点就集齐了"，但其实概率已经被大幅压低了。
+                1) 放宽误差接受5%或3%；2) 调整卡组组合（如AAB→AAAB增加难度）；3) 调整每日抽奖次数。
               </span>
             </div>
             <Divider style={{ margin: 0, borderColor: PALETTE.borderLight }} />
             <div>
-              <span style={{ fontSize: 15, fontWeight: 600, color: PALETTE.text, display: 'block', marginBottom: 8, fontFamily: FONT_DISPLAY }}>问：跨周卡首张为什么可以正常抽？</span>
+              <span style={{ fontSize: 15, fontWeight: 600, color: PALETTE.text, display: 'block', marginBottom: 8, fontFamily: FONT_DISPLAY }}>问：玩家投诉抽不到卡怎么办？</span>
               <span style={{ fontSize: 13, color: PALETTE.textMuted, lineHeight: 1.7, fontFamily: FONT_DISPLAY }}>
-                如果第二周的Ⅰ卡在第一周就抽不到，那么第二周开始时就有一部分玩家根本没法参与。所以首张跨周卡概率是正常的，但第2张就极难（防止第一周囤太多）。
-              </span>
-            </div>
-            <Divider style={{ margin: 0, borderColor: PALETTE.borderLight }} />
-            <div>
-              <span style={{ fontSize: 15, fontWeight: 600, color: PALETTE.text, display: 'block', marginBottom: 8, fontFamily: FONT_DISPLAY }}>问：系统显示"未收敛"怎么办？</span>
-              <span style={{ fontSize: 13, color: PALETTE.textMuted, lineHeight: 1.7, fontFamily: FONT_DISPLAY }}>
-                说明这个卡组组合很难同时让两周都接近4%。尝试更换卡组组合（比如第一周AAB，第二周CCF），或者放宽要求（接受3%或5%的完成率）。
+                这是设计预期。运营需要在活动说明里明确"本活动具有挑战性，只有少数玩家能完成"。这不是BUG，是机制。
               </span>
             </div>
           </div>
-        </div>
+        </StepBlock>
 
         {/* 返回按钮 */}
         <div style={{ textAlign: 'center', padding: '20px 0 40px' }}>
