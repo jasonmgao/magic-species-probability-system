@@ -259,32 +259,44 @@ export function CardSelectionPage({ onNavigateToConfig }: { onNavigateToConfig?:
     finally { setIsCalculating(false); }
   }, [setup]);
 
-  // 系数表格
+  // 系数表格 - 只显示需要降权的卡（本周重复 或 跨周重复）
   const renderCoefficients = (weekData: WeeklyCombo, otherWeekData: WeeklyCombo, coeffs: Record<string, CardCoefficients>) => {
     const needs = new Map<string, number>();
     for (const c of weekData.cards) needs.set(c, (needs.get(c) || 0) + 1);
     const otherNeeds = new Map<string, number>();
     for (const c of otherWeekData.cards) otherNeeds.set(c, (otherNeeds.get(c) || 0) + 1);
 
-    const allCards = new Set([...weekData.cards, ...otherWeekData.cards]);
-    const data = Array.from(allCards).sort().map(card => {
+    // 只显示需要降权的卡：本周重复的卡 + 跨周重复的卡
+    const cardsWithReduction = new Set<string>();
+    for (const [card, count] of needs.entries()) {
+      if (count > 1) cardsWithReduction.add(card); // 本周重复的
+    }
+    for (const [card, count] of otherNeeds.entries()) {
+      if (count > 1) cardsWithReduction.add(card); // 跨周重复的
+    }
+
+    const data = Array.from(cardsWithReduction).sort().map(card => {
       const demand = needs.get(card) || 0;
       const otherDemand = otherNeeds.get(card) || 0;
       const cardCoeffs = coeffs[card] || [1.0];
-      return { key: card, card, type: CARD_META[card].type, demand, otherDemand, coeffs: cardCoeffs, hasReduction: demand > 1 || otherDemand > 1 };
+      return { key: card, card, type: CARD_META[card].type, demand, otherDemand, coeffs: cardCoeffs };
     });
+
+    if (data.length === 0) {
+      return <div style={{ padding: '20px 0', textAlign: 'center', color: PALETTE.textMuted, fontFamily: FONT_DISPLAY }}>本周无降权系数</div>;
+    }
 
     return (
       <Table size="small" dataSource={data} pagination={false} style={{ fontSize: 13 }} columns={[
         { title: '卡牌', dataIndex: 'card', width: 60, render: (v: string) => <span style={{ fontWeight: 600, color: CARD_META[v].type === 'magic' ? PALETTE.accent : CARD_META[v].type === 'rare' ? PALETTE.success : PALETTE.textMuted, fontFamily: FONT_MONO }}>{v}</span> },
         { title: '类型', dataIndex: 'type', width: 70, render: (v: string) => <span style={{ fontFamily: FONT_DISPLAY }}>{TYPE_LABELS[v]}</span> },
         { title: '本周需求', dataIndex: 'demand', width: 90, align: 'right' as const, render: (v: number) => v > 0 ? <span style={{ fontFamily: FONT_MONO }}>{v}</span> : <span style={{ color: PALETTE.textMuted, fontFamily: FONT_DISPLAY }}>—</span> },
-        { title: '跨周需求', dataIndex: 'otherDemand', width: 90, align: 'right' as const, render: (v: number, record: any) => v > 0 ? <span style={{ color: record.hasReduction ? PALETTE.accent : PALETTE.textMuted, fontFamily: FONT_MONO }}>{v}</span> : <span style={{ color: PALETTE.textMuted, fontFamily: FONT_DISPLAY }}>—</span> },
-        { title: '降权系数', dataIndex: 'coeffs', render: (c: number[], record: any) => (
+        { title: '跨周需求', dataIndex: 'otherDemand', width: 90, align: 'right' as const, render: (v: number) => v > 0 ? <span style={{ color: PALETTE.accent, fontFamily: FONT_MONO }}>{v}</span> : <span style={{ color: PALETTE.textMuted, fontFamily: FONT_DISPLAY }}>—</span> },
+        { title: '降权系数', dataIndex: 'coeffs', render: (c: number[]) => (
           <div style={{ display: 'flex', gap: 8 }}>
-            <span style={{ padding: '2px 6px', background: PALETTE.borderLight, borderRadius: 3, fontSize: 12, color: PALETTE.textMuted, fontFamily: FONT_MONO }}>1.0</span>
-            {record.demand > 1 && <CoefficientDisplay value={c[1] || 0.01} />}
-            {record.demand > 2 && <CoefficientDisplay value={c[2] || 0.01} />}
+            <span style={{ padding: '2px 6px', background: PALETTE.borderLight, borderRadius: 3, fontSize: 12, color: PALETTE.textMuted, fontFamily: FONT_MONO }}>第1张: 1.0</span>
+            {c[1] && <CoefficientDisplay value={c[1]} />}
+            {c[2] && <CoefficientDisplay value={c[2]} />}
           </div>
         )},
       ]} />
