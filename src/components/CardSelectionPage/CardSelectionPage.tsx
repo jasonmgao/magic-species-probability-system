@@ -228,17 +228,44 @@ function WeekPanel({ title, subtitle, weekKey, combo, setup, onChange }: { title
   );
 }
 
-// 系数展示
-function CoefficientDisplay({ value }: { value: number }) {
-  const severity = value < 0.001 ? 'extreme' : value < 0.01 ? 'high' : value < 0.1 ? 'medium' : 'low';
-  const colors = {
-    extreme: { bg: PALETTE.accent, text: '#fff' },
-    high: { bg: '#d4a5a5', text: PALETTE.accent },
-    medium: { bg: '#e8f0e8', text: PALETTE.success },
-    low: { bg: PALETTE.borderLight, text: PALETTE.textMuted },
-  };
-  const c = colors[severity];
-  return <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 8px', background: c.bg, color: c.text, borderRadius: 3, fontSize: 12, fontWeight: severity === 'extreme' ? 600 : 400, fontFamily: FONT_MONO }}>{value.toFixed(5)}</span>;
+// 系数展示 - 显示所有档位，美观清晰
+function CoefficientDisplay({ coeffs }: { coeffs: number[] }) {
+  // 生成标签：第1张、第2张... 根据数组长度
+  const labels = coeffs.map((_, i) => `${i + 1}`);
+
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {coeffs.map((value, index) => {
+        const isFirst = index === 0;
+        const severity = isFirst ? 'normal' : value < 0.001 ? 'extreme' : value < 0.01 ? 'high' : value < 0.1 ? 'medium' : 'low';
+        const colors = {
+          normal: { bg: '#f0f0f0', text: '#999', border: '#e0e0e0' },
+          extreme: { bg: PALETTE.accent, text: '#fff', border: PALETTE.accent },
+          high: { bg: '#f4d7d7', text: PALETTE.accent, border: '#e5b5b5' },
+          medium: { bg: '#e8f0e8', text: PALETTE.success, border: '#c8dcc8' },
+          low: { bg: '#f5f5f5', text: PALETTE.textMuted, border: '#e0e0e0' },
+        };
+        const c = colors[severity];
+        const displayValue = isFirst ? '1.0' : value < 0.0001 ? value.toExponential(2) : value.toFixed(5);
+
+        return (
+          <div key={index} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+            <span style={{ fontSize: 10, color: PALETTE.textMuted, fontFamily: FONT_DISPLAY }}>第{labels[index]}张</span>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              minWidth: 56, padding: '4px 8px',
+              background: c.bg, color: c.text, border: `1px solid ${c.border}`,
+              borderRadius: 4, fontSize: 12,
+              fontWeight: severity === 'extreme' ? 600 : 500,
+              fontFamily: FONT_MONO
+            }}>
+              {displayValue}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 // 主组件
@@ -300,13 +327,7 @@ export function CardSelectionPage({ onNavigateToConfig }: { onNavigateToConfig?:
         { title: '类型', dataIndex: 'type', width: 70, render: (v: string) => <span style={{ fontFamily: FONT_DISPLAY }}>{TYPE_LABELS[v]}</span> },
         { title: '本周需求', dataIndex: 'demand', width: 90, align: 'right' as const, render: (v: number) => v > 0 ? <span style={{ fontFamily: FONT_MONO }}>{v}</span> : <span style={{ color: PALETTE.textMuted, fontFamily: FONT_DISPLAY }}>—</span> },
         { title: '跨周需求', dataIndex: 'otherDemand', width: 90, align: 'right' as const, render: (v: number) => v > 0 ? <span style={{ color: PALETTE.accent, fontFamily: FONT_MONO }}>{v}</span> : <span style={{ color: PALETTE.textMuted, fontFamily: FONT_DISPLAY }}>—</span> },
-        { title: '降权系数', dataIndex: 'coeffs', render: (c: number[]) => (
-          <div style={{ display: 'flex', gap: 8 }}>
-            <span style={{ padding: '2px 6px', background: PALETTE.borderLight, borderRadius: 3, fontSize: 12, color: PALETTE.textMuted, fontFamily: FONT_MONO }}>第1张: 1.0</span>
-            {c[1] && <CoefficientDisplay value={c[1]} />}
-            {c[2] && <CoefficientDisplay value={c[2]} />}
-          </div>
-        )},
+        { title: '降权系数', dataIndex: 'coeffs', render: (c: number[]) => <CoefficientDisplay coeffs={c} />},
       ]} />
     );
   };
