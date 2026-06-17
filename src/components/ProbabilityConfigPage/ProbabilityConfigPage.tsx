@@ -218,10 +218,8 @@ export function ProbabilityConfigPage({ onNavigateToSelection }: ProbabilityConf
             <div style={{ fontWeight: 600, marginBottom: 12 }}>步骤3 - 应用降权系数（使用第一周系数表）</div>
             <div style={{ paddingLeft: 20, marginBottom: 16, color: PALETTE.textMuted, fontFamily: FONT_MONO }}>
               · A（本周需要2张，已有1张）：1.2% × 0.0005 = 0.0006%（第2张降权）<br/>
-              · B（本周需要1张）：7% × 1.0 = 7%（无降权）<br/>
               · H（跨周卡，第二周需要2张，已有1张）：14% × 0.0005 = 0.007%（跨周第2张降权）<br/>
-              · C/D/E（背景卡）：7% × 1.0 = 7%<br/>
-              · F/G/I/J（背景卡）：14% × 1.0 = 14%
+              · B/C/D/E/F/G/I/J：保持基础概率不变
             </div>
 
             <div style={{ fontWeight: 600, marginBottom: 12 }}>步骤4 - 计算当前总概率（归一化前）</div>
