@@ -298,6 +298,12 @@ export function ProbabilityConfigPage({ onNavigateToSelection }: ProbabilityConf
               · 完成率 &gt; 5%（太简单）：增加单卡重复数（AAB→AAAB）或增加卡种类数<br/>
               · 完成率 &lt; 3%（太难）：减少单卡重复数（AAAB→AAB）或减少跨周重叠
             </p>
+
+            <p><strong>6. 特殊规则（兼容处理）</strong></p>
+            <p style={{ color: PALETTE.textMuted, marginLeft: 20 }}>
+              · <strong>帮抽、赠送、万能卡</strong>：这些方式获得的卡牌<strong>不参与组合奖开奖</strong>，即不计入本周收集进度<br/>
+              · 玩家必须通过正常抽卡获得所需卡牌才能触发组合奖结算
+            </p>
           </div>
         </StepBlock>
 

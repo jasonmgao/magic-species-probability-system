@@ -90,8 +90,7 @@ function CardToken({ card, count, isActive, isBase }: { card: string; count?: nu
   return (
     <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: isBase ? '6px 12px' : '4px 10px', background: isActive ? PALETTE.accentLight : PALETTE.surface, border: `1px solid ${isBase ? typeColors[meta.type] : isActive ? PALETTE.accent : PALETTE.border}`, borderRadius: 3 }}>
       <span style={{ fontSize: 14, fontWeight: 600, color: isBase ? typeColors[meta.type] : PALETTE.text, fontFamily: FONT_MONO }}>{card}</span>
-      {count && count > 1 && <span style={{ fontSize: 11, color: PALETTE.textMuted, fontFamily: FONT_DISPLAY }}>× {count}</span>}
-      {isBase && <span style={{ fontSize: 9, color: typeColors[meta.type], opacity: 0.7, fontFamily: FONT_DISPLAY }}>×2</span>}
+      {count && count > 1 && <span style={{ fontSize: 11, color: typeColors[meta.type], fontFamily: FONT_DISPLAY, fontWeight: 500 }}>×2</span>}
     </div>
   );
 }
