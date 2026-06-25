@@ -355,7 +355,8 @@ export async function solveCoefficientsAsync(
       }
 
       const res = await simulateBothWeeks(setup, testCoeffs, 1500);
-      const error = Math.abs(res.week1Rate - 4) + Math.abs(res.week2Rate - 4);
+      // 给第一周更高权重（1.5:1），优先保证第一周达到4%
+      const error = Math.abs(res.week1Rate - 4) * 1.5 + Math.abs(res.week2Rate - 4) * 0.5;
 
       if (error < bestTotalError) {
         bestTotalError = error;
@@ -405,7 +406,8 @@ export async function solveCoefficientsAsync(
       }
 
       const res = await simulateBothWeeks(setup, testCoeffs, 3000);
-      const error = Math.abs(res.week1Rate - 4) + Math.abs(res.week2Rate - 4);
+      // 给第一周更高权重（1.5:1），优先保证第一周达到4%
+      const error = Math.abs(res.week1Rate - 4) * 1.5 + Math.abs(res.week2Rate - 4) * 0.5;
 
       if (error < bestTotalError) {
         bestTotalError = error;
@@ -462,7 +464,8 @@ export async function solveCoefficientsAsync(
     fullCollectionRate: final.fullCollectionRate,
     converged: bestTotalError < 1.0,
     iterations: iterCount + (fine1Steps + 1) * (fine2Steps + 1) + 1,
-    finalError: Math.abs(final.week1Rate - 4) + Math.abs(final.week2Rate - 4),
+    // 报告误差使用加权后的值
+    finalError: Math.abs(final.week1Rate - 4) * 1.5 + Math.abs(final.week2Rate - 4) * 0.5,
   };
 }
 
