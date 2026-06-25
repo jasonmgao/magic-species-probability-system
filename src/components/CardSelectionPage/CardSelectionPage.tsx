@@ -174,7 +174,8 @@ function WeekPanel({ title, subtitle, weekKey, combo, setup, onChange }: { title
             ))}
           </Select>
           <div style={{ marginTop: 8 }}>
-            <CardToken card={baseCard} count={2} isBase />
+            {/* 显示该卡的总数量（基础2张 + 扩展卡中同卡的数量） */}
+            <CardToken card={baseCard} count={needs.get(baseCard) || 2} isBase />
           </div>
         </div>
 
