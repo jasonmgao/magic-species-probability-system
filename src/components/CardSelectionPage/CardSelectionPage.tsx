@@ -153,7 +153,7 @@ function WeekPanel({ title, subtitle, weekKey, combo, setup, onChange }: { title
                 color: idx < 2 ? PALETTE.accent : PALETTE.text,
                 border: `1px solid ${idx < 2 ? PALETTE.accent : PALETTE.border}`
               }}>
-                {card} {idx < 2 && <span style={{ fontSize: 10, opacity: 0.6 }}>(基)</span>}
+                {card}
               </span>
             ))}
           </div>
@@ -209,20 +209,12 @@ function WeekPanel({ title, subtitle, weekKey, combo, setup, onChange }: { title
           )}
         </div>
 
-        {/* 汇总统计 */}
-        <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px dashed ${PALETTE.border}` }}>
-          <span style={{ fontSize: 11, color: PALETTE.textMuted, opacity: 0.7, letterSpacing: '0.1em', display: 'block', marginBottom: 8, fontFamily: FONT_DISPLAY }}>卡牌统计</span>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {Array.from(needs.entries()).map(([card, count]) => (
-              <CardToken key={card} card={card} count={count} isActive={count > 1} />
-            ))}
+        {/* 降权提示 */}
+        {Array.from(needs.values()).some(n => n > 1) && (
+          <div style={{ marginTop: 16, padding: '10px 12px', background: PALETTE.accentLight, borderRadius: 3, fontSize: 11, color: PALETTE.accent, fontFamily: FONT_DISPLAY }}>
+            重复卡牌将于第2张起应用降权系数
           </div>
-          {Array.from(needs.values()).some(n => n > 1) && (
-            <div style={{ marginTop: 10, padding: '8px 12px', background: PALETTE.accentLight, borderRadius: 3, fontSize: 11, color: PALETTE.accent, fontFamily: FONT_DISPLAY }}>
-              重复卡牌将于第2张起应用降权系数
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );
