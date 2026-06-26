@@ -240,11 +240,17 @@ function drawOneCard(
 async function simulateBothWeeks(
   setup: CardSetup,
   coefficients: Record<string, CardCoefficients>,
-  trials: number
+  trials: number,
+  week1Boost: number = 1.0
 ): Promise<{ week1Rate: number; week2Rate: number; fullCollectionRate: number }> {
   let w1 = 0, w2 = 0, fc = 0;
   const allCards = new Set([...setup.week1.cards, ...setup.week2.cards]);
   const dailyDraws = setup.dailyDraws || 4;
+
+  // 如果 week1Boost > 1，创建放大的第一周系数表
+  const week1Coeffs: Record<string, CardCoefficients> = week1Boost !== 1.0
+    ? Object.fromEntries(Object.entries(coefficients).map(([k, v]) => [k, v.map(c => Math.min(1.0, c * week1Boost))]))
+    : coefficients;
 
   const chunkSize = 500;
   const chunks = Math.ceil(trials / chunkSize);
@@ -253,7 +259,7 @@ async function simulateBothWeeks(
     const currentChunkSize = chunk === chunks - 1 ? (trials % chunkSize || chunkSize) : chunkSize;
 
     for (let t = 0; t < currentChunkSize; t++) {
-      // Week 1
+      // Week 1（使用放大的系数）
       const bag1: Record<string, number> = {};
       const sched1 = generateSchedule().slice(0, 7);
       const lucky1 = new Set<string>();
@@ -261,13 +267,13 @@ async function simulateBothWeeks(
         const dt = sched1[d - 1];
         const lc = getLuckyCard(dt, allCards, lucky1);
         for (let i = 0; i < dailyDraws; i++) {
-          const c = drawOneCard(bag1, setup, coefficients, d, dt, lc);
+          const c = drawOneCard(bag1, setup, week1Coeffs, d, dt, lc);
           bag1[c] = (bag1[c] || 0) + 1;
         }
       }
       if (checkComboComplete(setup.week1, bag1)) w1++;
 
-      // Full 2 weeks
+      // Full 2 weeks（第二周使用原始系数）
       const bag2: Record<string, number> = {};
       const sched2 = generateSchedule();
       const lucky2a = new Set<string>(), lucky2b = new Set<string>();
@@ -275,7 +281,9 @@ async function simulateBothWeeks(
         const dt = sched2[d - 1];
         const lc = getLuckyCard(dt, allCards, d <= 7 ? lucky2a : lucky2b);
         for (let i = 0; i < dailyDraws; i++) {
-          const c = drawOneCard(bag2, setup, coefficients, d, dt, lc);
+          // 第一周使用放大系数，第二周使用原始系数
+          const coeffs = d <= 7 ? week1Coeffs : coefficients;
+          const c = drawOneCard(bag2, setup, coeffs, d, dt, lc);
           bag2[c] = (bag2[c] || 0) + 1;
         }
       }
@@ -354,7 +362,8 @@ export async function solveCoefficientsAsync(
         }
       }
 
-      const res = await simulateBothWeeks(setup, testCoeffs, 1500);
+      // V8.0：第一周使用3倍增益进行模拟（让求解器为第一周找更宽松的系数，第二周保持原样）
+      const res = await simulateBothWeeks(setup, testCoeffs, 1500, 3.0);
       const error = Math.abs(res.week1Rate - 4) + Math.abs(res.week2Rate - 4);
 
       if (error < bestTotalError) {
@@ -404,7 +413,8 @@ export async function solveCoefficientsAsync(
         }
       }
 
-      const res = await simulateBothWeeks(setup, testCoeffs, 3000);
+      // V8.0：第一周使用3倍增益
+      const res = await simulateBothWeeks(setup, testCoeffs, 3000, 3.0);
       const error = Math.abs(res.week1Rate - 4) + Math.abs(res.week2Rate - 4);
 
       if (error < bestTotalError) {
@@ -453,7 +463,8 @@ export async function solveCoefficientsAsync(
     }
   }
 
-  const final = await simulateBothWeeks(setup, finalCoeffs, 12000);
+  // V8.0：最终验证也使用3倍增益，确保第一周达到4%目标
+  const final = await simulateBothWeeks(setup, finalCoeffs, 12000, 3.0);
 
   return {
     coefficients: finalCoeffs,
